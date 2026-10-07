@@ -1,8 +1,24 @@
 import { useState, useMemo } from 'react';
-import { Activity, AlertCircle, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { Activity, AlertCircle, TrendingUp, TrendingDown, DollarSign, Edit2, Trash2 } from 'lucide-react';
 import { calculateFinancials, stockOf } from '../utils/finance';
 
-export default function DashboardView({ sales, expenses, products }: { sales: any[], expenses: any[], products: any[] }) {
+export default function DashboardView({ 
+  sales, 
+  expenses, 
+  products,
+  onEditSale,
+  onDeleteSale,
+  onEditExpense,
+  onDeleteExpense
+}: { 
+  sales: any[], 
+  expenses: any[], 
+  products: any[],
+  onEditSale?: (sale: any) => void,
+  onDeleteSale?: (saleId: string) => void,
+  onEditExpense?: (expense: any) => void,
+  onDeleteExpense?: (expenseId: string) => void
+}) {
   const [timePeriod, setTimePeriod] = useState<'today' | 'week' | 'month' | 'year' | 'all' | 'custom'>('today');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -321,11 +337,11 @@ export default function DashboardView({ sales, expenses, products }: { sales: an
           <div className="flex flex-col gap-2.5">
             {[...filteredSales.map(s => ({...s, type: 'sale'})), ...filteredExpenses.map(e => ({...e, type: 'expense'}))]
               .sort((a, b) => new Date(b.timestamp || b.date || 0).getTime() - new Date(a.timestamp || a.date || 0).getTime())
-              .slice(0, 5)
+              .slice(0, 8)
               .map((activity, idx) => (
                 <div 
                   key={activity.id || idx} 
-                  className="flex justify-between items-center p-3 sm:p-3.5 rounded-xl bg-surface/40 hover:bg-surface border border-border/50 hover:border-border transition-all min-w-0"
+                  className="flex justify-between items-center p-3 sm:p-3.5 rounded-xl bg-surface/40 hover:bg-surface border border-border/50 hover:border-border transition-all min-w-0 group"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
@@ -336,8 +352,11 @@ export default function DashboardView({ sales, expenses, products }: { sales: an
                       {activity.type === 'sale' ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
                     </div>
                     <div className="min-w-0">
-                      <div className="font-bold text-foreground text-sm break-words">
-                        {activity.type === 'sale' ? `Sold ${activity.productName}` : activity.category || 'Expense'}
+                      <div className="font-bold text-foreground text-sm break-words flex items-center gap-2">
+                        <span>{activity.type === 'sale' ? `Sold ${activity.productName}` : activity.category || 'Expense'}</span>
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-surface border border-border/60 text-muted-foreground uppercase">
+                          {activity.type === 'sale' ? (activity.unitName ? `${activity.quantitySold} ${activity.unitName}` : 'Sale') : 'Expense'}
+                        </span>
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5 break-words">
                         {activity.timestamp ? new Date(activity.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}
@@ -345,10 +364,64 @@ export default function DashboardView({ sales, expenses, products }: { sales: an
                       </div>
                     </div>
                   </div>
-                  <div className={`font-extrabold text-sm sm:text-base shrink-0 ml-3 ${
-                    activity.type === 'sale' ? 'text-emerald-400' : 'text-amber-400'
-                  }`}>
-                    {activity.type === 'sale' ? '+' : '-'}₦{(activity.totalRevenue || activity.amount || 0).toLocaleString()}
+
+                  <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-3">
+                    <div className={`font-extrabold text-sm sm:text-base ${
+                      activity.type === 'sale' ? 'text-emerald-400' : 'text-amber-400'
+                    }`}>
+                      {activity.type === 'sale' ? '+' : '-'}₦{(activity.totalRevenue || activity.amount || 0).toLocaleString()}
+                    </div>
+
+                    <div className="flex items-center gap-1 opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                      {activity.type === 'sale' && onEditSale && (
+                        <button
+                          type="button"
+                          onClick={() => onEditSale(activity)}
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-amber-400 hover:bg-surface border border-border/40 hover:border-amber-400/40 transition-colors"
+                          title="Edit Sale Record"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {activity.type === 'sale' && onDeleteSale && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`Delete sale record for "${activity.productName}"?`)) {
+                              onDeleteSale(activity.id);
+                            }
+                          }}
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-surface border border-border/40 hover:border-rose-400/40 transition-colors"
+                          title="Delete Sale Record"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {activity.type === 'expense' && onEditExpense && (
+                        <button
+                          type="button"
+                          onClick={() => onEditExpense(activity)}
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-amber-400 hover:bg-surface border border-border/40 hover:border-amber-400/40 transition-colors"
+                          title="Edit Expense"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {activity.type === 'expense' && onDeleteExpense && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm(`Delete expense "${activity.category || activity.description || 'Expense'}"?`)) {
+                              onDeleteExpense(activity.id);
+                            }
+                          }}
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-surface border border-border/40 hover:border-rose-400/40 transition-colors"
+                          title="Delete Expense"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
             ))}

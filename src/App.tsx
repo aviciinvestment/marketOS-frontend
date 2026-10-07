@@ -8,15 +8,16 @@ import {
   Package, ShoppingBag, Trash2,
   RefreshCw, Settings, LogOut, BarChart2,
   Camera, Upload, WifiOff, AlertTriangle,
-  ShieldCheck, Compass,
+  ShieldCheck, Compass, Globe,
   ChevronLeft, PanelLeftClose, PanelLeftOpen,
-  Menu, X
+  Menu, X, Edit2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_ENDPOINTS, ADMIN_EMAIL, API_BASE_URL } from './config/api';
+import { API_ENDPOINTS, ADMIN_EMAIL, API_BASE_URL, getApiBaseUrl } from './config/api';
 import ProductsTable from './components/ProductsTable';
 import ProductModal from './components/ProductModal';
 import SaleModal from './components/SaleModal';
+import EditSaleModal from './components/EditSaleModal';
 import ExpenseModal from './components/ExpenseModal';
 import ExpenseList from './components/ExpenseList';
 import DashboardView from './components/DashboardView';
@@ -108,8 +109,17 @@ function App() {
   const [showLandingPage, setShowLandingPage] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [mobileHeaderMenuOpen, setMobileHeaderMenuOpen] = useState(false);
-  const [user, setUser] = useState<any>(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [user, setUser] = useState<any>(() => {
+    try {
+      const cached = localStorage.getItem('marketos_cached_auth_user');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [authLoading, setAuthLoading] = useState(() => {
+    return !localStorage.getItem('marketos_cached_auth_user');
+  });
 
   const isFounder = user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
@@ -125,7 +135,19 @@ function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
+      if (currentUser) {
+        const uData = {
+          uid: currentUser.uid,
+          email: currentUser.email,
+          displayName: currentUser.displayName,
+          photoURL: currentUser.photoURL,
+        };
+        localStorage.setItem('marketos_cached_auth_user', JSON.stringify(uData));
+        setUser(currentUser);
+      } else {
+        localStorage.removeItem('marketos_cached_auth_user');
+        setUser(null);
+      }
       setAuthLoading(false);
     });
     return () => unsubscribe();
@@ -190,6 +212,7 @@ function App() {
   };
 
   const handleLogout = async () => {
+    localStorage.removeItem('marketos_cached_auth_user');
     await signOut(auth);
   };
 
@@ -201,6 +224,35 @@ function App() {
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [profileSuccessMessage, setProfileSuccessMessage] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Custom API Backend URL State for Vercel/Render deployments
+  const [customApiUrlInput, setCustomApiUrlInput] = useState(() => {
+    return localStorage.getItem('marketos_custom_api_url') || '';
+  });
+  const [apiTestingStatus, setApiTestingStatus] = useState<string | null>(null);
+
+  const handleSaveCustomApiUrl = async () => {
+    setApiTestingStatus('testing');
+    const url = customApiUrlInput.trim().replace(/\/+$/, '');
+    if (url) {
+      localStorage.setItem('marketos_custom_api_url', url);
+    } else {
+      localStorage.removeItem('marketos_custom_api_url');
+    }
+    try {
+      const targetUrl = url || getApiBaseUrl();
+      const res = await fetch(`${targetUrl}/api/health`);
+      if (res.ok) {
+        setApiTestingStatus('success');
+        syncCycleRef.current();
+      } else {
+        setApiTestingStatus('error');
+      }
+    } catch {
+      setApiTestingStatus('error');
+    }
+    setTimeout(() => setApiTestingStatus(null), 4000);
+  };
 
   // Custom Modal Dialog states (replaces window.alert, window.confirm, window.prompt)
   const [clearDataModalOpen, setClearDataModalOpen] = useState(false);
@@ -282,13 +334,37 @@ function App() {
     }
   };
 
-  // Inventory / Products State
+  // Reliable per-user localStorage keys helper
+  const getUserStorageKeys = (explicitUid?: string) => {
+    let uid = explicitUid;
+    if (!uid && user?.uid) uid = user.uid;
+    if (!uid) {
+      try {
+        const cached = localStorage.getItem('marketos_cached_auth_user');
+        if (cached) uid = JSON.parse(cached)?.uid;
+      } catch {}
+    }
+    const pfx = uid ? `marketos_${uid}` : 'marketos';
+    return {
+      p: `${pfx}_products_v2`,
+      s: `${pfx}_sales_v2`,
+      e: `${pfx}_expenses_v2`,
+      deleted: `${pfx}_deleted_v2`,
+      hash: `${pfx}_synced_hash`,
+      lastSync: `${pfx}_last_sync`
+    };
+  };
+
+  // Inventory / Products State: loaded directly from per-user localStorage
   const [products, setProducts] = useState<any[]>(() => {
-    const saved = localStorage.getItem('marketos_products_v2');
-    if (!saved) return [];
-    // Stock and profit are derived live from money made vs cost, so products are
-    // stored as-is (no repair needed).
-    return JSON.parse(saved);
+    try {
+      const ks = getUserStorageKeys();
+      const saved = localStorage.getItem(ks.p) || localStorage.getItem('marketos_products_v2');
+      if (!saved) return [];
+      return JSON.parse(saved);
+    } catch {
+      return [];
+    }
   });
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -305,20 +381,28 @@ function App() {
       return 0;
     });
 
-  // Sales Record State
+  // Sales Record State: loaded directly from per-user localStorage
   const [sales, setSales] = useState<any[]>(() => {
-    const saved = localStorage.getItem('marketos_sales_v2');
-    if (!saved) return [];
-    // Sales only record money received; profit is derived live from each
-    // product's purchase cost, so no per-sale cost repair is needed here.
-    return JSON.parse(saved);
+    try {
+      const ks = getUserStorageKeys();
+      const saved = localStorage.getItem(ks.s) || localStorage.getItem('marketos_sales_v2');
+      if (!saved) return [];
+      return JSON.parse(saved);
+    } catch {
+      return [];
+    }
   });
 
-  // Business Expenses State
+  // Business Expenses State: loaded directly from per-user localStorage
   const [expenses, setExpenses] = useState<any[]>(() => {
-    const saved = localStorage.getItem('marketos_expenses_v2');
-    if (saved) return JSON.parse(saved);
-    return [];
+    try {
+      const ks = getUserStorageKeys();
+      const saved = localStorage.getItem(ks.e) || localStorage.getItem('marketos_expenses_v2');
+      if (saved) return JSON.parse(saved);
+      return [];
+    } catch {
+      return [];
+    }
   });
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<any>(null);
@@ -334,18 +418,32 @@ function App() {
   
   const saveProduct = (savedProduct: any) => {
     if (!savedProduct) return;
+    const now = Date.now();
+    const withTimestamp = {
+      ...savedProduct,
+      updatedAt: now
+    };
+    let updatedProducts: any[];
     if (products.find(p => p.id === savedProduct.id)) {
-      setProducts(products.map(p => p.id === savedProduct.id ? savedProduct : p));
+      updatedProducts = products.map(p => p.id === savedProduct.id ? withTimestamp : p);
     } else {
-      setProducts([savedProduct, ...products]);
+      updatedProducts = [withTimestamp, ...products];
     }
+    setProducts(updatedProducts);
+    const ks = dataKeys();
+    localStorage.setItem(ks.p, JSON.stringify(updatedProducts));
+    dataRef.current = { ...dataRef.current, products: updatedProducts };
     markChanged();
     setIsProductModalOpen(false);
     setEditForm(null);
   };
   
   const deleteProduct = (id: string) => {
-    setProducts(products.filter(p => p.id !== id));
+    const updatedProducts = products.filter(p => p.id !== id);
+    setProducts(updatedProducts);
+    const ks = dataKeys();
+    localStorage.setItem(ks.p, JSON.stringify(updatedProducts));
+    dataRef.current = { ...dataRef.current, products: updatedProducts };
     markDeleted('products', id);
     markChanged();
   };
@@ -387,13 +485,12 @@ function App() {
 
   // Per-user localStorage keys. The legacy global keys are only used to migrate
   // data the first time a user signs in on this browser.
-  const dataKeys = () => {
-    const pfx = user ? `marketos_${user.uid}` : 'marketos';
-    return { p: `${pfx}_products_v2`, s: `${pfx}_sales_v2`, e: `${pfx}_expenses_v2` };
-  };
-  const deletedCacheKey = () => (user ? `marketos_${user.uid}_deleted_v2` : 'marketos_deleted_v2');
-  const syncedHashKey = () => (user ? `marketos_synced_hash_${user.uid}` : 'marketos_synced_hash');
-  const lastSyncKey = () => (user ? `marketos_last_sync_${user.uid}` : 'marketos_last_sync');
+  // Per-user localStorage keys. The legacy global keys are only used to migrate
+  // data the first time a user signs in on this browser.
+  const dataKeys = () => getUserStorageKeys(user?.uid);
+  const deletedCacheKey = () => dataKeys().deleted;
+  const syncedHashKey = () => dataKeys().hash;
+  const lastSyncKey = () => dataKeys().lastSync;
 
   // Mirror of current data so the sync loop always sees the latest values.
   const dataRef = useRef({ products, sales, expenses });
@@ -406,28 +503,43 @@ function App() {
     });
 
   // Merge server rows into local newest-wins. Neither device's data is ever lost.
-  const mergeRecords = (localArr: any[], remoteArr: any[]) => {
+  // Locally deleted items are strictly ignored so they can never be resurrected from the database.
+  const mergeRecords = (localArr: any[], remoteArr: any[], deletedIds: Set<string> = new Set()) => {
     const byId = new Map<string, any>();
-    for (const r of localArr) if (r && r.id != null) byId.set(String(r.id), r);
+    for (const r of (localArr || [])) {
+      if (r && r.id != null) {
+        const rid = String(r.id);
+        if (!deletedIds.has(rid)) {
+          byId.set(rid, r);
+        }
+      }
+    }
     const out: any[] = [];
-    for (const r of remoteArr) {
+    for (const r of (remoteArr || [])) {
       if (!r || r.id == null) continue;
       const rid = String(r.id);
+      // If deleted locally, NEVER resurrect from remote database!
+      if (deletedIds.has(rid)) continue;
+
       const local = byId.get(rid);
       if (local) byId.delete(rid);
       const rT = Number(r.updatedAt) || (r.timestamp ? new Date(r.timestamp).getTime() : 0) || 0;
       const lT = local ? (Number(local.updatedAt) || (local.timestamp ? new Date(local.timestamp).getTime() : 0) || 0) : 0;
       if (!local) {
-        if (!r.deleted) out.push(r); // brand new, recorded on another device
+        if (!r.deleted) out.push(r); // brand new item recorded on another device
       } else if (r.deleted) {
-        if (rT < lT) out.push(local); // our copy is newer, keep it
-      } else if (rT >= lT) {
-        out.push(r); // server has the newer revision
+        if (lT > rT) out.push(local); // our local copy was updated after remote deletion
+      } else if (lT >= rT) {
+        out.push(local); // local edit/revision wins ties and newer local changes!
       } else {
-        out.push(local); // our revision is newer
+        out.push(r); // another device has a strictly newer revision
       }
     }
-    for (const r of byId.values()) out.push(r);
+    for (const r of byId.values()) {
+      if (!deletedIds.has(String(r.id))) {
+        out.push(r);
+      }
+    }
     return out;
   };
 
@@ -458,6 +570,10 @@ function App() {
       if (id && !cache[kind].includes(id)) cache[kind].push(id);
       localStorage.setItem(dk, JSON.stringify(cache));
     } catch {}
+    // If online, immediately push tombstones so the database deletes the row permanently
+    if (navigator.onLine && user) {
+      pushPayload(dataRef.current).catch(() => {});
+    }
   };
 
   // Push everything on this device up. The server merges newest-wins and never
@@ -466,9 +582,14 @@ function App() {
     if (!user) return;
     let deleted = { products: [], sales: [], expenses: [] };
     try { deleted = JSON.parse(localStorage.getItem(deletedCacheKey()) || '{"products":[],"sales":[],"expenses":[]}'); } catch {}
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
     const res = await fetch(API_ENDPOINTS.sync, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
       body: JSON.stringify({ 
         userId: user.uid, 
         userEmail: user.email || '', 
@@ -478,6 +599,8 @@ function App() {
         deleted 
       }),
     });
+    clearTimeout(timeoutId);
+
     if (!res.ok) {
       fetch(`${API_BASE_URL}/api/admin/telemetry`, {
         method: 'POST',
@@ -499,7 +622,7 @@ function App() {
     clearOwnPending();
   };
 
-  // One full sync round: pull + merge, then push anything newer locally.
+  // One full sync round: push pending local changes/deletions, then pull from server.
   const syncCycle = useCallback(async () => {
     if (!user || !navigator.onLine) {
       setDirty(true);
@@ -507,9 +630,37 @@ function App() {
       return;
     }
     try {
+      // 1. Inspect any pending deletions
+      let deletedObj = { products: [], sales: [], expenses: [] };
+      try {
+        deletedObj = JSON.parse(localStorage.getItem(deletedCacheKey()) || '{"products":[],"sales":[],"expenses":[]}');
+      } catch {}
+
+      const hasDeletions = (deletedObj.products?.length || 0) > 0 || (deletedObj.sales?.length || 0) > 0 || (deletedObj.expenses?.length || 0) > 0;
+      
+      // If we have local deletions or unsaved changes, push them first so database deletes tombstones immediately!
+      if (hasDeletions || dirty) {
+        try {
+          await pushPayload(dataRef.current);
+          try {
+            deletedObj = JSON.parse(localStorage.getItem(deletedCacheKey()) || '{"products":[],"sales":[],"expenses":[]}');
+          } catch {}
+        } catch (e) {
+          console.warn('Pre-sync push failed, will merge with local tombstones', e);
+        }
+      }
+
       const uName = encodeURIComponent(user.displayName || profileDisplayName || user.email?.split('@')[0] || 'Merchant');
       const uEmail = encodeURIComponent(user.email || '');
-      const res = await fetch(`${API_ENDPOINTS.data}?userId=${encodeURIComponent(user.uid)}&name=${uName}&email=${uEmail}`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+      const res = await fetch(`${API_ENDPOINTS.data}?userId=${encodeURIComponent(user.uid)}&name=${uName}&email=${uEmail}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
       if (!res.ok) {
         fetch(`${API_BASE_URL}/api/admin/telemetry`, {
           method: 'POST',
@@ -524,16 +675,38 @@ function App() {
         throw new Error('pull failed');
       }
       const remote = await res.json();
-      const mergedP = mergeRecords(dataRef.current.products, remote.products || []);
-      const mergedS = recentFirst(mergeRecords(dataRef.current.sales, remote.sales || []));
-      const mergedE = recentFirst(mergeRecords(dataRef.current.expenses, remote.expenses || []));
+      
+      // CRITICAL: Always pull freshest local state directly from localStorage so offline additions/edits are never overwritten!
+      const ks = dataKeys();
+      const currentLocalP = JSON.parse(localStorage.getItem(ks.p) || '[]');
+      const currentLocalS = JSON.parse(localStorage.getItem(ks.s) || '[]');
+      const currentLocalE = JSON.parse(localStorage.getItem(ks.e) || '[]');
+
+      // Pass deleted IDs set to mergeRecords so deleted items are strictly filtered out
+      const delP = new Set((deletedObj.products || []).map((x: any) => String(x)));
+      const delS = new Set((deletedObj.sales || []).map((x: any) => String(x)));
+      const delE = new Set((deletedObj.expenses || []).map((x: any) => String(x)));
+
+      const mergedP = mergeRecords(currentLocalP, remote.products || [], delP);
+      const mergedS = recentFirst(mergeRecords(currentLocalS, remote.sales || [], delS));
+      const mergedE = recentFirst(mergeRecords(currentLocalE, remote.expenses || [], delE));
+
+      // Persist the combined state immediately to localStorage
+      localStorage.setItem(ks.p, JSON.stringify(mergedP));
+      localStorage.setItem(ks.s, JSON.stringify(mergedS));
+      localStorage.setItem(ks.e, JSON.stringify(mergedE));
+      dataRef.current = { products: mergedP, sales: mergedS, expenses: mergedE };
+
       setProducts(mergedP);
       setSales(mergedS);
       setExpenses(mergedE);
+
       const deviceIds = (remote.meta?.pendingDeviceIds || []).filter((d: string) => d !== deviceId);
       setOtherDevicePending(deviceIds);
+
       const ours = { products: mergedP, sales: mergedS, expenses: mergedE };
-      if (JSON.stringify(ours) !== syncedHashRef.current) {
+      const currentHash = JSON.stringify(ours);
+      if (currentHash !== syncedHashRef.current) {
         await pushPayload(ours);
       } else {
         setDirty(false);
@@ -546,15 +719,14 @@ function App() {
       setSyncError(true);
       setDirty(true);
     }
-  }, [user, deviceId]);
+  }, [user, deviceId, dirty]);
 
   const syncCycleRef = useRef<() => Promise<void>>(async () => {});
   useEffect(() => {
     syncCycleRef.current = syncCycle;
   }, [syncCycle]);
 
-  // Persist current data per-user (only after sign-in; the legacy global keys
-  // stay untouched so they can migrate the user the first time).
+  // Persist current data per-user whenever state changes
   useEffect(() => {
     if (!user) return;
     const ks = dataKeys();
@@ -589,11 +761,13 @@ function App() {
   // immediately pull whatever another device has already saved to the cloud.
   useEffect(() => {
     if (!user) {
+      if (authLoading) return; // Do NOT clear if auth is still verifying on page load!
       setOtherDevicePending([]);
       setDirty(false);
       setProducts([]);
       setSales([]);
       setExpenses([]);
+      dataRef.current = { products: [], sales: [], expenses: [] };
       return;
     }
     const ks = dataKeys();
@@ -609,15 +783,22 @@ function App() {
     const loadedP = JSON.parse(localStorage.getItem(ks.p) || '[]');
     const loadedS = JSON.parse(localStorage.getItem(ks.s) || '[]');
     const loadedE = JSON.parse(localStorage.getItem(ks.e) || '[]');
+
+    // Set dataRef synchronously before triggering syncCycle!
+    dataRef.current = { products: loadedP, sales: loadedS, expenses: loadedE };
     setProducts(loadedP);
     setSales(loadedS);
     setExpenses(loadedE);
+
     const savedHash = localStorage.getItem(syncedHashKey()) || '';
     syncedHashRef.current = savedHash;
     const savedSync = Number(localStorage.getItem(lastSyncKey()) || 0);
     setLastSyncAt(savedSync || null);
-    syncCycleRef.current();
-  }, [user]);
+
+    if (navigator.onLine) {
+      syncCycleRef.current();
+    }
+  }, [user, authLoading]);
 
   const markChanged = () => {
     setDirty(true);
@@ -648,19 +829,79 @@ function App() {
   };
 
   const handleRecordSale = (sale: any) => {
-    // Stock and profit are derived live from money made vs cost, so a sale only
-    // needs to be stored here.
-    setSales([sale, ...sales]);
+    const now = Date.now();
+    const saleWithTime = {
+      ...sale,
+      updatedAt: now,
+      timestamp: sale.timestamp || new Date().toISOString()
+    };
+    const updatedSales = [saleWithTime, ...sales];
+    setSales(updatedSales);
+    const ks = dataKeys();
+    localStorage.setItem(ks.s, JSON.stringify(updatedSales));
+    dataRef.current = { ...dataRef.current, sales: updatedSales };
     markChanged();
   };
 
+  // Edit and Delete Sale State & Handlers
+  const [isEditSaleModalOpen, setIsEditSaleModalOpen] = useState(false);
+  const [editingSale, setEditingSale] = useState<any>(null);
+
+  const startEditSale = (sale: any) => {
+    setEditingSale(sale);
+    setIsEditSaleModalOpen(true);
+  };
+
+  const handleSaveSale = (sale: any) => {
+    if (!sale) return;
+    const now = Date.now();
+    const saleWithTime = {
+      ...sale,
+      updatedAt: now,
+      timestamp: sale.timestamp || new Date().toISOString()
+    };
+    const updatedSales = sales.map(s => s.id === sale.id ? saleWithTime : s);
+    setSales(updatedSales);
+    const ks = dataKeys();
+    localStorage.setItem(ks.s, JSON.stringify(updatedSales));
+    dataRef.current = { ...dataRef.current, sales: updatedSales };
+    markChanged();
+    setIsEditSaleModalOpen(false);
+    setEditingSale(null);
+  };
+
+  const handleDeleteSale = (id: string) => {
+    const updatedSales = sales.filter(s => s.id !== id);
+    setSales(updatedSales);
+    const ks = dataKeys();
+    localStorage.setItem(ks.s, JSON.stringify(updatedSales));
+    dataRef.current = { ...dataRef.current, sales: updatedSales };
+    markDeleted('sales', id);
+    markChanged();
+    if (editingSale?.id === id) {
+      setIsEditSaleModalOpen(false);
+      setEditingSale(null);
+    }
+  };
+
   const handleSaveExpense = (expense: any) => {
-    setExpenses(prevExpenses => {
-      const exists = prevExpenses.some(e => e.id === expense.id);
-      return exists
-        ? prevExpenses.map(e => e.id === expense.id ? expense : e)
-        : [expense, ...prevExpenses];
-    });
+    const now = Date.now();
+    const expenseWithTime = {
+      ...expense,
+      updatedAt: now,
+      date: expense.date || new Date().toISOString()
+    };
+    let updatedExpenses: any[];
+    const exists = expenses.some(e => e.id === expense.id);
+    if (exists) {
+      updatedExpenses = expenses.map(e => e.id === expense.id ? expenseWithTime : e);
+    } else {
+      updatedExpenses = [expenseWithTime, ...expenses];
+    }
+    setExpenses(updatedExpenses);
+    const ks = dataKeys();
+    localStorage.setItem(ks.e, JSON.stringify(updatedExpenses));
+    dataRef.current = { ...dataRef.current, expenses: updatedExpenses };
     markChanged();
     setIsExpenseModalOpen(false);
     setEditingExpense(null);
@@ -672,7 +913,11 @@ function App() {
   };
 
   const handleDeleteExpense = (id: string) => {
-    setExpenses(prevExpenses => prevExpenses.filter(e => e.id !== id));
+    const updatedExpenses = expenses.filter(e => e.id !== id);
+    setExpenses(updatedExpenses);
+    const ks = dataKeys();
+    localStorage.setItem(ks.e, JSON.stringify(updatedExpenses));
+    dataRef.current = { ...dataRef.current, expenses: updatedExpenses };
     markDeleted('expenses', id);
     markChanged();
     if (editingExpense?.id === id) {
@@ -942,33 +1187,14 @@ function App() {
     setProducts([]);
     setSales([]);
     setExpenses([]);
+    const ks = dataKeys();
+    localStorage.setItem(ks.p, '[]');
+    localStorage.setItem(ks.s, '[]');
+    localStorage.setItem(ks.e, '[]');
+    dataRef.current = { products: [], sales: [], expenses: [] };
     markChanged();
     setClearDataModalOpen(false);
   };
-
-  // When activeTab is 'guide', render the App Guide as a true full page without the dashboard sidebar/navbars
-  if (activeTab === 'guide') {
-    return (
-      <div className="relative min-h-screen bg-[#07090E]">
-        <LandingPage
-          currentUserEmail={user?.email}
-          onLaunchApp={() => setActiveTab('home')}
-          onOpenAdmin={() => setActiveTab('admin')}
-          onOpenLegal={(type) => setLegalModalTab(type)}
-        />
-        <SupportWidget userEmail={user?.email} />
-        <LegalModal 
-          isOpen={!!legalModalTab}
-          initialTab={legalModalTab || 'privacy'}
-          onClose={() => setLegalModalTab(null)}
-          onAccept={() => {
-            setConsentAgreed(true);
-            setLegalModalTab(null);
-          }}
-        />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row font-sans transition-colors duration-300">
@@ -1108,69 +1334,37 @@ function App() {
         </nav>
       </aside>
 
-      {/* Floating Bottom Nav for Mobile (Directly Inspired by Image 2) */}
-      <nav className="fixed bottom-4 left-3 right-3 max-w-md mx-auto bg-card/95 backdrop-blur-xl border border-white/10 rounded-full px-3 py-2 flex items-center justify-around shadow-2xl z-50 md:hidden">
+      {/* Floating Bottom Nav for Mobile - Strictly 3: Home, Stock, Insights */}
+      <nav className="fixed bottom-4 left-4 right-4 max-w-sm mx-auto bg-card/95 backdrop-blur-xl border border-white/10 rounded-full px-5 py-2.5 flex items-center justify-between shadow-2xl z-50 md:hidden">
         <button 
           onClick={() => setActiveTab('home')}
-          className={`flex flex-col items-center gap-0.5 transition-all ${
-            activeTab === 'home' ? 'text-[#F5C518] scale-105 font-bold' : 'text-muted-foreground hover:text-foreground'
+          className={`flex flex-col items-center gap-1 transition-all flex-1 ${
+            activeTab === 'home' ? 'text-[#F5C518] scale-105 font-black' : 'text-muted-foreground hover:text-foreground font-semibold'
           }`}
         >
-          <Home className="w-4 h-4" />
-          <span className="text-[9px]">Home</span>
+          <Home className="w-5 h-5" />
+          <span className="text-[10px]">Home</span>
         </button>
 
         <button 
           onClick={() => setActiveTab('products')}
-          className={`flex flex-col items-center gap-0.5 transition-all ${
-            activeTab === 'products' ? 'text-[#F5C518] scale-105 font-bold' : 'text-muted-foreground hover:text-foreground'
+          className={`flex flex-col items-center gap-1 transition-all flex-1 ${
+            activeTab === 'products' ? 'text-[#F5C518] scale-105 font-black' : 'text-muted-foreground hover:text-foreground font-semibold'
           }`}
         >
-          <Package className="w-4 h-4" />
-          <span className="text-[9px]">Stock</span>
+          <Package className="w-5 h-5" />
+          <span className="text-[10px]">Stock</span>
         </button>
 
         <button 
           onClick={() => setActiveTab('insights')}
-          className={`flex flex-col items-center gap-0.5 transition-all ${
-            activeTab === 'insights' ? 'text-[#F5C518] scale-105 font-bold' : 'text-muted-foreground hover:text-foreground'
+          className={`flex flex-col items-center gap-1 transition-all flex-1 ${
+            activeTab === 'insights' ? 'text-[#F5C518] scale-105 font-black' : 'text-muted-foreground hover:text-foreground font-semibold'
           }`}
         >
-          <BarChart2 className="w-4 h-4" />
-          <span className="text-[9px]">Insights</span>
+          <BarChart2 className="w-5 h-5" />
+          <span className="text-[10px]">Insights</span>
         </button>
-
-        <button 
-          onClick={() => setActiveTab('settings')}
-          className={`flex flex-col items-center gap-0.5 transition-all ${
-            activeTab === 'settings' ? 'text-[#F5C518] scale-105 font-bold' : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <Settings className="w-4 h-4" />
-          <span className="text-[9px]">Settings</span>
-        </button>
-
-        <button 
-          onClick={() => setActiveTab('guide')}
-          className={`flex flex-col items-center gap-0.5 transition-all ${
-            (activeTab as any) === 'guide' ? 'text-[#F5C518] scale-105 font-bold' : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          <Compass className="w-4 h-4" />
-          <span className="text-[9px]">Guide</span>
-        </button>
-
-        {isFounder && (
-          <button 
-            onClick={() => setActiveTab('admin')}
-            className={`flex flex-col items-center gap-0.5 transition-all ${
-              activeTab === 'admin' ? 'text-amber-400 scale-105 font-bold' : 'text-amber-400/80 hover:text-amber-300'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span className="text-[9px]">Admin</span>
-          </button>
-        )}
       </nav>
 
       {/* Main Content Area */}
@@ -1355,6 +1549,55 @@ function App() {
                   <span className={`w-1.5 h-1.5 rounded-full ${(dirty || syncError || !online) ? 'bg-black/50' : 'bg-emerald-400'}`} />
                 </button>
               </div>
+
+              {/* Mobile Navigation Shortcuts for Settings, Guide, and Admin */}
+              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-border/50">
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('settings'); setMobileHeaderMenuOpen(false); }}
+                  className={`flex items-center gap-2.5 p-2.5 rounded-xl border transition-all text-xs font-bold ${
+                    activeTab === 'settings'
+                      ? 'bg-[#F5C518] text-black border-amber-400 font-extrabold shadow-sm'
+                      : 'bg-surface/70 hover:bg-surface border-border/70 text-foreground'
+                  }`}
+                >
+                  <Settings className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span className="truncate">Settings</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('guide'); setMobileHeaderMenuOpen(false); }}
+                  className={`flex items-center gap-2.5 p-2.5 rounded-xl border transition-all text-xs font-bold ${
+                    (activeTab as any) === 'guide'
+                      ? 'bg-[#F5C518] text-black border-amber-400 font-extrabold shadow-sm'
+                      : 'bg-surface/70 hover:bg-surface border-border/70 text-foreground'
+                  }`}
+                >
+                  <Compass className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span className="truncate">App Guide</span>
+                </button>
+
+                {isFounder && (
+                  <button
+                    type="button"
+                    onClick={() => { setActiveTab('admin'); setMobileHeaderMenuOpen(false); }}
+                    className={`col-span-2 flex items-center justify-between p-2.5 rounded-xl border transition-all text-xs font-bold ${
+                      activeTab === 'admin'
+                        ? 'bg-amber-400 text-black border-amber-500 font-extrabold shadow-sm'
+                        : 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-400'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <ShieldCheck className="w-4 h-4 shrink-0" />
+                      <span>Mission Control (Admin)</span>
+                    </div>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/20 font-mono">
+                      FOUNDER
+                    </span>
+                  </button>
+                )}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -1392,107 +1635,169 @@ function App() {
         <div className="px-3 sm:px-5 xl:px-8 py-2">
           
           {activeTab === 'home' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 xl:gap-6">
+            <div className="flex flex-col gap-6 max-w-4xl mx-auto">
               
-              {/* Left Column (Home) */}
-              <div className="lg:col-span-2 flex flex-col gap-4 xl:gap-6 min-w-0 order-2 lg:order-1">
-                
-                <DashboardView sales={sales} expenses={expenses} products={products} />
-
-                <ProductAnalysis products={products} sales={sales} onSell={handleSelectProduct} />
-
-                <div className="flex justify-end mt-1">
-                  <button 
-                    onClick={() => { setEditingExpense(null); setIsExpenseModalOpen(true); }}
-                    className="pill-button flex items-center gap-2 bg-[#F5C518] hover:bg-[#EAB308] text-black px-4 sm:px-5 py-2.5 rounded-full text-xs font-extrabold transition-all shadow-md shadow-amber-500/15"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Record Money Spent
-                  </button>
-                </div>
-
-                <ExpenseList 
-                  expenses={expenses}
-                  onEdit={startEditExpense}
-                  onDelete={handleDeleteExpense}
-                />
-
-                {/* Expense Modal Wrapper */}
-                <ExpenseModal 
-                  isOpen={isExpenseModalOpen}
-                  onClose={() => setIsExpenseModalOpen(false)}
-                  onSave={handleSaveExpense}
-                  initialExpense={editingExpense}
-                />
-
-              </div>
-
-              {/* Right Column (Home) - Quick Sell Panel (Top on Mobile, Sidebar on Desktop) */}
-              <div className="flex flex-col gap-4 xl:gap-6 min-w-0 order-1 lg:order-2">
-                
-                <div className="bg-card -mx-3 sm:mx-0 w-[calc(100%+1.5rem)] sm:w-full rounded-none sm:rounded-2xl p-3.5 sm:p-5 xl:p-6 border-y sm:border border-border/50 shadow-sm relative flex flex-col">
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-extrabold text-foreground text-base sm:text-lg tracking-tight">Quick Sell</h3>
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#F5C518]/15 text-amber-500 border border-[#F5C518]/30 shrink-0">
-                          Tap to Record
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">Tap an item to record a customer sale</p>
+              {/* Quick Sell Register */}
+              <div className="bg-card -mx-3 sm:mx-0 w-[calc(100%+1.5rem)] sm:w-full rounded-none sm:rounded-2xl p-4 sm:p-6 border-y sm:border border-border/50 shadow-sm relative flex flex-col">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-extrabold text-foreground text-lg sm:text-xl tracking-tight">Quick Sell</h3>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#F5C518]/15 text-amber-500 border border-[#F5C518]/30 shrink-0">
+                        Tap to Record
+                      </span>
                     </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">Tap an item to record a customer sale</p>
                   </div>
-                  
-                  {products.length === 0 ? (
-                    <div className="py-8 text-center text-xs text-muted-foreground bg-surface/40 rounded-xl border border-dashed border-border/50">
-                      No stock added yet. Go to "My Stock" to add items.
+
+                  {products.length > 0 && (
+                    <div className="text-xs text-muted-foreground font-semibold">
+                      {products.length} {products.length === 1 ? 'item' : 'items'} in stock
                     </div>
-                  ) : (
-                    <div className="flex flex-col gap-2 max-h-[380px] lg:max-h-[600px] overflow-y-auto pr-0.5">
-                      {products.map(product => (
+                  )}
+                </div>
+                
+                {products.length === 0 ? (
+                  <div className="py-12 text-center text-xs text-muted-foreground bg-surface/40 rounded-xl border border-dashed border-border/50 flex flex-col items-center justify-center gap-3">
+                    <Package className="w-8 h-8 text-muted-foreground/60" />
+                    <div>
+                      <p className="font-bold text-foreground text-sm">No stock added yet</p>
+                      <p className="text-muted-foreground mt-0.5">Go to "My Stock" to add items first.</p>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab('products')}
+                      className="pill-button mt-1 px-4 py-2 bg-[#F5C518] text-black font-extrabold text-xs rounded-xl shadow-sm"
+                    >
+                      Go to My Stock
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-[460px] overflow-y-auto pr-0.5">
+                    {products.map(product => {
+                      const displayPrice = product.sellingUnits?.length > 0 ? product.sellingUnits[0].price : product.purchasePrice || 0;
+                      const unitName = product.sellingUnits?.length > 0 ? product.sellingUnits[0].name : product.purchaseUnit || 'Unit';
+                      return (
                         <button
                           key={product.id}
                           onClick={() => handleSelectProduct(product)}
-                          className="pill-button bg-surface/60 hover:bg-surface border border-border/50 hover:border-border/80 p-2.5 sm:p-3 rounded-xl flex items-center justify-between gap-2.5 text-left transition-all group w-full shadow-sm min-w-0"
+                          className="pill-button bg-surface/60 hover:bg-surface border border-border/50 hover:border-amber-400/50 p-3 rounded-xl flex items-center justify-between gap-2.5 text-left transition-all group w-full shadow-sm min-w-0"
                         >
                           <div className="flex items-center gap-2.5 flex-1 min-w-0 pr-1">
-                            <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
-                              <ShoppingBag className="w-3.5 h-3.5" />
+                            <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
+                              <ShoppingBag className="w-4 h-4" />
                             </div>
-                            <div className="flex items-center gap-1.5 flex-1 min-w-0 flex-wrap sm:flex-nowrap">
-                              <span className="text-xs sm:text-sm font-bold text-foreground leading-tight group-hover:text-amber-400 transition-colors truncate">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs sm:text-sm font-bold text-foreground leading-tight group-hover:text-amber-400 transition-colors truncate">
                                 {product.name}
-                              </span>
-                              <span className="text-[10px] sm:text-[11px] text-muted-foreground font-semibold shrink-0 whitespace-nowrap">
-                                • {product.sellingUnits?.length > 0 
-                                  ? product.sellingUnits[0].name 
-                                  : product.purchaseUnit || 'Unit'
-                                }
-                              </span>
+                              </div>
+                              <div className="text-[10px] text-muted-foreground font-semibold mt-0.5 truncate">
+                                • {unitName}
+                              </div>
                             </div>
                           </div>
                           
                           <div className="text-right shrink-0">
-                            <span className="text-xs font-extrabold text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 whitespace-nowrap inline-block">
-                              ₦{(product.sellingUnits?.length > 0 ? product.sellingUnits[0].price : product.purchasePrice || 0).toLocaleString()}
+                            <span className="text-xs font-black text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 whitespace-nowrap inline-block">
+                              ₦{displayPrice.toLocaleString()}
                             </span>
                           </div>
                         </button>
-                      ))}
-                    </div>
-                  )}
+                      );
+                    })}
+                  </div>
+                )}
 
-                  {isSaleModalOpen && (
-                    <SaleModal 
-                      isOpen={isSaleModalOpen}
-                      product={selectedProduct}
-                      sales={sales}
-                      onClose={() => setIsSaleModalOpen(false)}
-                      onRecordSale={handleRecordSale}
-                    />
+                {isSaleModalOpen && (
+                  <SaleModal 
+                    isOpen={isSaleModalOpen}
+                    product={selectedProduct}
+                    sales={sales}
+                    onClose={() => setIsSaleModalOpen(false)}
+                    onRecordSale={handleRecordSale}
+                  />
+                )}
+              </div>
+
+              {/* Recent Quick Sells - Mistaken Entry Management (Edit & Delete) */}
+              <div className="bg-card -mx-3 sm:mx-0 w-[calc(100%+1.5rem)] sm:w-full rounded-none sm:rounded-2xl p-4 sm:p-6 border-y sm:border border-border/50 shadow-sm flex flex-col">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-extrabold text-foreground text-base sm:text-lg tracking-tight">Recent Quick Sells</h3>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-surface border border-border/60 text-muted-foreground">
+                        Mistaken Entry Fixer
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">Edit or delete any sale record mistakenly inputted</p>
+                  </div>
+                  {sales.length > 0 && (
+                    <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
+                      {sales.length} Total {sales.length === 1 ? 'Sale' : 'Sales'}
+                    </span>
                   )}
                 </div>
 
+                {sales.length === 0 ? (
+                  <div className="py-8 text-center text-xs text-muted-foreground bg-surface/30 rounded-xl border border-dashed border-border/50">
+                    No sales recorded yet. Tap any item above to record a customer sale.
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {sales.slice(0, 10).map((sale) => (
+                      <div
+                        key={sale.id}
+                        className="flex justify-between items-center p-3 rounded-xl bg-surface/40 hover:bg-surface border border-border/50 hover:border-border transition-all min-w-0 group"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                            <ShoppingBag className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-bold text-foreground text-xs sm:text-sm truncate flex items-center gap-2">
+                              <span>Sold {sale.productName || 'Product'}</span>
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-surface border border-border/60 text-muted-foreground">
+                                {sale.quantitySold || 1} {sale.unitName || 'Unit'}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-muted-foreground mt-0.5">
+                              {sale.timestamp ? new Date(sale.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}
+                              {sale.sellingPricePerUnit ? ` · ₦${sale.sellingPricePerUnit.toLocaleString()} each` : ''}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-2">
+                          <div className="font-black text-sm sm:text-base text-emerald-400">
+                            +₦{(sale.totalRevenue || sale.amount || 0).toLocaleString()}
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => startEditSale(sale)}
+                              className="p-1.5 rounded-lg text-muted-foreground hover:text-amber-400 hover:bg-surface border border-border/50 hover:border-amber-400/40 transition-colors"
+                              title="Edit Sale Record"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (confirm(`Delete sale of ${sale.productName || 'this product'}?`)) {
+                                  handleDeleteSale(sale.id);
+                                }
+                              }}
+                              className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-surface border border-border/50 hover:border-rose-400/40 transition-colors"
+                              title="Delete Mistaken Sale"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
             </div>
@@ -1561,7 +1866,45 @@ function App() {
         </div>
 
         {activeTab === 'insights' && (
-          <div className="px-5 sm:px-8 py-2 animate-in fade-in slide-in-from-bottom-3 duration-300">
+          <div className="px-3 sm:px-5 xl:px-8 py-2 flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-3 duration-300">
+            {/* 1. Business Summary, Financial KPIs & Recent Activity */}
+            <DashboardView 
+              sales={sales} 
+              expenses={expenses} 
+              products={products}
+              onEditSale={startEditSale}
+              onDeleteSale={handleDeleteSale}
+              onEditExpense={startEditExpense}
+              onDeleteExpense={handleDeleteExpense}
+            />
+
+            {/* 2. Product Profit & Cost Recovery Analysis */}
+            <ProductAnalysis products={products} sales={sales} onSell={handleSelectProduct} />
+
+            {/* 3. Business Expenses Manager */}
+            <div className="bg-card rounded-2xl p-4 sm:p-6 border border-border/50 shadow-sm flex flex-col gap-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-extrabold text-foreground tracking-tight">Business Expenses</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">Track transportation, power, feeding, and operational costs</p>
+                </div>
+                <button 
+                  onClick={() => { setEditingExpense(null); setIsExpenseModalOpen(true); }}
+                  className="pill-button flex items-center justify-center gap-2 bg-[#F5C518] hover:bg-[#EAB308] text-black px-4 sm:px-5 py-2.5 rounded-full text-xs font-extrabold transition-all shadow-md shadow-amber-500/15"
+                >
+                  <Plus className="w-4 h-4" />
+                  Record Money Spent
+                </button>
+              </div>
+
+              <ExpenseList 
+                expenses={expenses}
+                onEdit={startEditExpense}
+                onDelete={handleDeleteExpense}
+              />
+            </div>
+
+            {/* 4. Deep Insights & Period Comparison */}
             <InsightsView sales={sales} expenses={expenses} products={products} />
           </div>
         )}
@@ -1746,6 +2089,56 @@ function App() {
               </div>
             </div>
 
+            {/* Cloud Sync & Backend Server Connection Card */}
+            <div className="bg-card border border-border/80 rounded-2xl p-5 sm:p-7 shadow-sm">
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-5 h-5 text-amber-400" />
+                  <h3 className="text-base font-extrabold text-foreground tracking-tight">Cloud Sync & Server Connection</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${online && !syncError ? 'bg-emerald-400' : (!online ? 'bg-zinc-500' : 'bg-amber-400 animate-pulse')}`} />
+                  <span className="text-xs font-bold text-muted-foreground">
+                    {online && !syncError ? 'Cloud Connected' : (!online ? 'Offline Storage Active' : 'Connecting to Cloud...')}
+                  </span>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
+                MarketOS is offline-first. All products, sales, and expenses are persistently saved in your browser&apos;s local storage and survive page refreshes. When connected, they automatically transfer to your PostgreSQL database.
+              </p>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider mb-1.5 text-muted-foreground">
+                    Backend API URL (Render / Live Server)
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input 
+                      type="text" 
+                      value={customApiUrlInput} 
+                      onChange={(e) => setCustomApiUrlInput(e.target.value)}
+                      placeholder={getApiBaseUrl()}
+                      className="flex-1 bg-surface border border-border/80 rounded-xl px-4 py-2.5 text-foreground focus:outline-none focus:border-amber-400 text-xs font-mono font-medium transition-colors" 
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSaveCustomApiUrl}
+                      disabled={apiTestingStatus === 'testing'}
+                      className="pill-button px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-xs transition-all shadow-sm flex items-center justify-center gap-1.5 shrink-0"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${apiTestingStatus === 'testing' ? 'animate-spin' : ''}`} />
+                      <span>{apiTestingStatus === 'testing' ? 'Testing...' : 'Save & Test'}</span>
+                    </button>
+                  </div>
+                  <div className="text-[11px] text-muted-foreground/80 mt-1.5 flex flex-wrap items-center justify-between gap-1">
+                    <span>Current target: <code className="text-amber-400">{getApiBaseUrl()}</code></span>
+                    {apiTestingStatus === 'success' && <span className="text-emerald-400 font-bold">✓ Backend connection verified!</span>}
+                    {apiTestingStatus === 'error' && <span className="text-rose-400 font-bold">✕ Could not reach server (offline or warming up)</span>}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Founder Admin Mission Control Shortcut */}
             {isFounder && (
               <div className="bg-card border border-amber-500/30 rounded-2xl p-5 sm:p-7 shadow-sm relative overflow-hidden">
@@ -1798,6 +2191,37 @@ function App() {
             />
           </div>
         )}
+
+        {/* Logged-in App Guide View - Floating bottom nav and header remain visible! */}
+        {(activeTab as any) === 'guide' && (
+          <div className="relative min-h-[calc(100vh-120px)] bg-[#07090E] -mx-3 sm:-mx-5 xl:-mx-8 -my-2 rounded-2xl overflow-hidden border border-white/5 shadow-2xl">
+            <LandingPage
+              currentUserEmail={user?.email}
+              onLaunchApp={() => setActiveTab('home')}
+              onOpenAdmin={() => setActiveTab('admin')}
+              onOpenLegal={(type) => setLegalModalTab(type)}
+            />
+          </div>
+        )}
+
+        {/* Global Sale & Expense Edit Modals */}
+        <EditSaleModal
+          isOpen={isEditSaleModalOpen}
+          sale={editingSale}
+          onClose={() => {
+            setIsEditSaleModalOpen(false);
+            setEditingSale(null);
+          }}
+          onSave={handleSaveSale}
+          onDelete={handleDeleteSale}
+        />
+
+        <ExpenseModal 
+          isOpen={isExpenseModalOpen}
+          onClose={() => setIsExpenseModalOpen(false)}
+          onSave={handleSaveExpense}
+          initialExpense={editingExpense}
+        />
 
         {/* AlertDialog Modals replacing all native browser dialogs */}
         <NotificationsPanel

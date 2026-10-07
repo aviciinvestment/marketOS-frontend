@@ -8,22 +8,32 @@
 
 export const DEFAULT_API_URL = 'http://localhost:3005';
 
-export const API_BASE_URL: string = (
-  (import.meta.env.VITE_API_URL as string) ||
-  (import.meta.env.VITE_API_BASE_URL as string) ||
-  DEFAULT_API_URL
-).replace(/\/+$/, '');
+export const getApiBaseUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    const custom = localStorage.getItem('marketos_custom_api_url');
+    if (custom && custom.trim()) {
+      return custom.trim().replace(/\/+$/, '');
+    }
+  }
+  return (
+    (import.meta.env.VITE_API_URL as string) ||
+    (import.meta.env.VITE_API_BASE_URL as string) ||
+    DEFAULT_API_URL
+  ).replace(/\/+$/, '');
+};
+
+export const API_BASE_URL: string = getApiBaseUrl();
 
 export const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL as string) || 'victorychibuakunna@gmail.com';
 
 export const API_ENDPOINTS = {
-  sync: `${API_BASE_URL}/api/sync`,
-  data: `${API_BASE_URL}/api/data`,
-  flagPending: `${API_BASE_URL}/api/flag/pending`,
-  flagClear: `${API_BASE_URL}/api/flag/clear`,
-  health: `${API_BASE_URL}/api/health`,
-  adminStats: `${API_BASE_URL}/api/admin/stats`,
-  adminLogs: `${API_BASE_URL}/api/admin/logs`,
-  adminComplaints: `${API_BASE_URL}/api/admin/complaints`,
-  supportComplaint: `${API_BASE_URL}/api/support/complaint`,
-} as const;
+  get sync() { return `${getApiBaseUrl()}/api/sync`; },
+  get data() { return `${getApiBaseUrl()}/api/data`; },
+  get flagPending() { return `${getApiBaseUrl()}/api/flag/pending`; },
+  get flagClear() { return `${getApiBaseUrl()}/api/flag/clear`; },
+  get health() { return `${getApiBaseUrl()}/api/health`; },
+  get adminStats() { return `${getApiBaseUrl()}/api/admin/stats`; },
+  get adminLogs() { return `${getApiBaseUrl()}/api/admin/logs`; },
+  get adminComplaints() { return `${getApiBaseUrl()}/api/admin/complaints`; },
+  get supportComplaint() { return `${getApiBaseUrl()}/api/support/complaint`; },
+};
