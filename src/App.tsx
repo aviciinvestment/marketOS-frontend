@@ -8,12 +8,12 @@ import {
   Package, ShoppingBag, Trash2,
   RefreshCw, Settings, LogOut, BarChart2,
   Camera, Upload, WifiOff, AlertTriangle,
-  ShieldCheck, Compass, Globe,
+  ShieldCheck, Compass,
   ChevronLeft, PanelLeftClose, PanelLeftOpen,
   Menu, X, Edit2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { API_ENDPOINTS, ADMIN_EMAIL, API_BASE_URL, getApiBaseUrl } from './config/api';
+import { API_ENDPOINTS, ADMIN_EMAIL, API_BASE_URL } from './config/api';
 import ProductsTable from './components/ProductsTable';
 import ProductModal from './components/ProductModal';
 import SaleModal from './components/SaleModal';
@@ -212,7 +212,33 @@ function App() {
   };
 
   const handleLogout = async () => {
-    localStorage.removeItem('marketos_cached_auth_user');
+    try {
+      if (user?.uid) {
+        const ks = getUserStorageKeys(user.uid);
+        localStorage.removeItem(ks.p);
+        localStorage.removeItem(ks.s);
+        localStorage.removeItem(ks.e);
+        localStorage.removeItem(ks.deleted);
+        localStorage.removeItem(ks.hash);
+        localStorage.removeItem(ks.lastSync);
+        localStorage.removeItem(ks.tombstones);
+      }
+      localStorage.removeItem('marketos_products_v2');
+      localStorage.removeItem('marketos_sales_v2');
+      localStorage.removeItem('marketos_expenses_v2');
+      localStorage.removeItem('marketos_deleted_v2');
+      localStorage.removeItem('marketos_cached_auth_user');
+    } catch {}
+
+    setProducts([]);
+    setSales([]);
+    setExpenses([]);
+    dataRef.current = { products: [], sales: [], expenses: [] };
+    syncedHashRef.current = '';
+    setLastSyncAt(null);
+    setOtherDevicePending([]);
+    setDirty(false);
+
     await signOut(auth);
   };
 
@@ -225,34 +251,9 @@ function App() {
   const [profileSuccessMessage, setProfileSuccessMessage] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Custom API Backend URL State for Vercel/Render deployments
-  const [customApiUrlInput, setCustomApiUrlInput] = useState(() => {
-    return localStorage.getItem('marketos_custom_api_url') || '';
-  });
-  const [apiTestingStatus, setApiTestingStatus] = useState<string | null>(null);
-
-  const handleSaveCustomApiUrl = async () => {
-    setApiTestingStatus('testing');
-    const url = customApiUrlInput.trim().replace(/\/+$/, '');
-    if (url) {
-      localStorage.setItem('marketos_custom_api_url', url);
-    } else {
-      localStorage.removeItem('marketos_custom_api_url');
-    }
-    try {
-      const targetUrl = url || getApiBaseUrl();
-      const res = await fetch(`${targetUrl}/api/health`);
-      if (res.ok) {
-        setApiTestingStatus('success');
-        syncCycleRef.current();
-      } else {
-        setApiTestingStatus('error');
-      }
-    } catch {
-      setApiTestingStatus('error');
-    }
-    setTimeout(() => setApiTestingStatus(null), 4000);
-  };
+  // Quick Sells Modal Confirmation states (replacing window.confirm and alert)
+  const [deleteSaleConfirm, setDeleteSaleConfirm] = useState<{ id: string; name: string; amount: number } | null>(null);
+  const [saleUpdateNotice, setSaleUpdateNotice] = useState<{ isOpen: boolean; message: string } | null>(null);
 
   // Custom Modal Dialog states (replaces window.alert, window.confirm, window.prompt)
   const [clearDataModalOpen, setClearDataModalOpen] = useState(false);
@@ -351,8 +352,25 @@ function App() {
       e: `${pfx}_expenses_v2`,
       deleted: `${pfx}_deleted_v2`,
       hash: `${pfx}_synced_hash`,
-      lastSync: `${pfx}_last_sync`
+      lastSync: `${pfx}_last_sync`,
+      tombstones: `${pfx}_known_tombstones`
     };
+  };
+
+  const getKnownTombstones = (explicitUid?: string): { products: Record<string, any>; sales: Record<string, any>; expenses: Record<string, any> } => {
+    try {
+      const ks = getUserStorageKeys(explicitUid);
+      const raw = localStorage.getItem(ks.tombstones);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return { products: {}, sales: {}, expenses: {} };
+  };
+
+  const saveKnownTombstones = (tombstones: { products?: Record<string, any>; sales?: Record<string, any>; expenses?: Record<string, any> }, explicitUid?: string) => {
+    try {
+      const ks = getUserStorageKeys(explicitUid);
+      localStorage.setItem(ks.tombstones, JSON.stringify(tombstones));
+    } catch {}
   };
 
   // Inventory / Products State: loaded directly from per-user localStorage
@@ -421,7 +439,8 @@ function App() {
     const now = Date.now();
     const withTimestamp = {
       ...savedProduct,
-      updatedAt: now
+      updatedAt: now,
+      updatedByDevice: deviceId
     };
     let updatedProducts: any[];
     if (products.find(p => p.id === savedProduct.id)) {
@@ -503,13 +522,33 @@ function App() {
     });
 
   // Merge server rows into local newest-wins. Neither device's data is ever lost.
-  // Locally deleted items are strictly ignored so they can never be resurrected from the database.
-  const mergeRecords = (localArr: any[], remoteArr: any[], deletedIds: Set<string> = new Set()) => {
+  // Merge server rows into local newest-wins. Neither device's data is ever lost.
+  // Items matching tombstones are strictly dropped so deleted items can NEVER be resurrected from another device's local storage.
+  const mergeRecords = (
+    localArr: any[], 
+    remoteArr: any[], 
+    tombstonesMap: Record<string, { deletedAt: number; device?: string }> = {}, 
+    pendingDeletedIds: Set<string> = new Set()
+  ) => {
+    const isItemTombstoned = (r: any): boolean => {
+      if (!r || r.id == null) return true;
+      const rid = String(r.id);
+      if (pendingDeletedIds.has(rid)) return true;
+      const tomb = tombstonesMap[rid];
+      if (tomb && tomb.deletedAt) {
+        const itemTime = Number(r.updatedAt) || (r.timestamp ? new Date(r.timestamp).getTime() : 0) || 0;
+        if (itemTime <= tomb.deletedAt) {
+          return true;
+        }
+      }
+      return false;
+    };
+
     const byId = new Map<string, any>();
     for (const r of (localArr || [])) {
       if (r && r.id != null) {
         const rid = String(r.id);
-        if (!deletedIds.has(rid)) {
+        if (!isItemTombstoned(r)) {
           byId.set(rid, r);
         }
       }
@@ -518,8 +557,7 @@ function App() {
     for (const r of (remoteArr || [])) {
       if (!r || r.id == null) continue;
       const rid = String(r.id);
-      // If deleted locally, NEVER resurrect from remote database!
-      if (deletedIds.has(rid)) continue;
+      if (isItemTombstoned(r)) continue;
 
       const local = byId.get(rid);
       if (local) byId.delete(rid);
@@ -536,7 +574,7 @@ function App() {
       }
     }
     for (const r of byId.values()) {
-      if (!deletedIds.has(String(r.id))) {
+      if (!isItemTombstoned(r)) {
         out.push(r);
       }
     }
@@ -564,11 +602,19 @@ function App() {
   // Remember something deleted locally so it can be removed on every device
   // (tombstone) once we're back online.
   const markDeleted = (kind: 'products' | 'sales' | 'expenses', id: string) => {
+    const sId = String(id);
+    const now = Date.now();
     try {
       const dk = deletedCacheKey();
       const cache = JSON.parse(localStorage.getItem(dk) || '{"products":[],"sales":[],"expenses":[]}');
-      if (id && !cache[kind].includes(id)) cache[kind].push(id);
+      if (sId && !cache[kind].includes(sId)) cache[kind].push(sId);
       localStorage.setItem(dk, JSON.stringify(cache));
+
+      // Also record in known tombstones cache immediately
+      const currentTombstones = getKnownTombstones();
+      if (!currentTombstones[kind]) currentTombstones[kind] = {};
+      currentTombstones[kind][sId] = { deletedAt: now, device: deviceId };
+      saveKnownTombstones(currentTombstones);
     } catch {}
     // If online, immediately push tombstones so the database deletes the row permanently
     if (navigator.onLine && user) {
@@ -676,6 +722,23 @@ function App() {
       }
       const remote = await res.json();
       
+      // Merge remote tombstones into our local known tombstones cache
+      const localTombstones = getKnownTombstones();
+      if (remote.tombstones) {
+        for (const type of ['products', 'sales', 'expenses'] as const) {
+          const remoteMap = remote.tombstones[type] || {};
+          if (!localTombstones[type]) localTombstones[type] = {};
+          for (const [id, t] of Object.entries(remoteMap)) {
+            const existing = localTombstones[type][id];
+            const rT = Number((t as any).deletedAt) || 0;
+            if (!existing || (existing.deletedAt || 0) < rT) {
+              localTombstones[type][id] = t;
+            }
+          }
+        }
+        saveKnownTombstones(localTombstones);
+      }
+
       // CRITICAL: Always pull freshest local state directly from localStorage so offline additions/edits are never overwritten!
       const ks = dataKeys();
       const currentLocalP = JSON.parse(localStorage.getItem(ks.p) || '[]');
@@ -687,9 +750,9 @@ function App() {
       const delS = new Set((deletedObj.sales || []).map((x: any) => String(x)));
       const delE = new Set((deletedObj.expenses || []).map((x: any) => String(x)));
 
-      const mergedP = mergeRecords(currentLocalP, remote.products || [], delP);
-      const mergedS = recentFirst(mergeRecords(currentLocalS, remote.sales || [], delS));
-      const mergedE = recentFirst(mergeRecords(currentLocalE, remote.expenses || [], delE));
+      const mergedP = mergeRecords(currentLocalP, remote.products || [], localTombstones.products || {}, delP);
+      const mergedS = recentFirst(mergeRecords(currentLocalS, remote.sales || [], localTombstones.sales || {}, delS));
+      const mergedE = recentFirst(mergeRecords(currentLocalE, remote.expenses || [], localTombstones.expenses || {}, delE));
 
       // Persist the combined state immediately to localStorage
       localStorage.setItem(ks.p, JSON.stringify(mergedP));
@@ -833,6 +896,7 @@ function App() {
     const saleWithTime = {
       ...sale,
       updatedAt: now,
+      updatedByDevice: deviceId,
       timestamp: sale.timestamp || new Date().toISOString()
     };
     const updatedSales = [saleWithTime, ...sales];
@@ -858,6 +922,7 @@ function App() {
     const saleWithTime = {
       ...sale,
       updatedAt: now,
+      updatedByDevice: deviceId,
       timestamp: sale.timestamp || new Date().toISOString()
     };
     const updatedSales = sales.map(s => s.id === sale.id ? saleWithTime : s);
@@ -868,6 +933,10 @@ function App() {
     markChanged();
     setIsEditSaleModalOpen(false);
     setEditingSale(null);
+    setSaleUpdateNotice({
+      isOpen: true,
+      message: `Sale record for "${sale.productName || 'Product'}" was updated successfully and synced across all your devices.`
+    });
   };
 
   const handleDeleteSale = (id: string) => {
@@ -889,6 +958,7 @@ function App() {
     const expenseWithTime = {
       ...expense,
       updatedAt: now,
+      updatedByDevice: deviceId,
       date: expense.date || new Date().toISOString()
     };
     let updatedExpenses: any[];
@@ -1180,20 +1250,50 @@ function App() {
   };
 
   const executeClearAllData = () => {
-    // Tombstone everything so the cloud tells other devices to clean up too.
-    products.forEach((p: any) => markDeleted('products', p.id));
-    sales.forEach((s: any) => markDeleted('sales', s.id));
-    expenses.forEach((e: any) => markDeleted('expenses', e.id));
+    const now = Date.now();
+    const ks = dataKeys();
+    const currentTombstones = getKnownTombstones();
+    const deletedBatch: { products: string[]; sales: string[]; expenses: string[] } = {
+      products: [],
+      sales: [],
+      expenses: []
+    };
+
+    products.forEach((p: any) => {
+      const id = String(p.id);
+      deletedBatch.products.push(id);
+      if (!currentTombstones.products) currentTombstones.products = {};
+      currentTombstones.products[id] = { deletedAt: now, device: deviceId };
+    });
+    sales.forEach((s: any) => {
+      const id = String(s.id);
+      deletedBatch.sales.push(id);
+      if (!currentTombstones.sales) currentTombstones.sales = {};
+      currentTombstones.sales[id] = { deletedAt: now, device: deviceId };
+    });
+    expenses.forEach((e: any) => {
+      const id = String(e.id);
+      deletedBatch.expenses.push(id);
+      if (!currentTombstones.expenses) currentTombstones.expenses = {};
+      currentTombstones.expenses[id] = { deletedAt: now, device: deviceId };
+    });
+
+    saveKnownTombstones(currentTombstones);
+    localStorage.setItem(deletedCacheKey(), JSON.stringify(deletedBatch));
+
     setProducts([]);
     setSales([]);
     setExpenses([]);
-    const ks = dataKeys();
     localStorage.setItem(ks.p, '[]');
     localStorage.setItem(ks.s, '[]');
     localStorage.setItem(ks.e, '[]');
     dataRef.current = { products: [], sales: [], expenses: [] };
     markChanged();
     setClearDataModalOpen(false);
+
+    if (navigator.onLine && user) {
+      pushPayload({ products: [], sales: [], expenses: [] }).catch(() => {});
+    }
   };
 
   return (
@@ -1724,9 +1824,6 @@ function App() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="font-extrabold text-foreground text-base sm:text-lg tracking-tight">Recent Quick Sells</h3>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-surface border border-border/60 text-muted-foreground">
-                        Mistaken Entry Fixer
-                      </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">Edit or delete any sale record mistakenly inputted</p>
                   </div>
@@ -1753,11 +1850,24 @@ function App() {
                             <ShoppingBag className="w-4 h-4" />
                           </div>
                           <div className="min-w-0">
-                            <div className="font-bold text-foreground text-xs sm:text-sm truncate flex items-center gap-2">
+                            <div className="font-bold text-foreground text-xs sm:text-sm truncate flex flex-wrap items-center gap-1.5 sm:gap-2">
                               <span>Sold {sale.productName || 'Product'}</span>
                               <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-surface border border-border/60 text-muted-foreground">
                                 {sale.quantitySold || 1} {sale.unitName || 'Unit'}
                               </span>
+                              {sale.updatedByDevice ? (
+                                sale.updatedByDevice === deviceId ? (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                    This device
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-sky-500/10 text-sky-400 border border-sky-500/20 flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                                    Another device
+                                  </span>
+                                )
+                              ) : null}
                             </div>
                             <div className="text-[11px] text-muted-foreground mt-0.5">
                               {sale.timestamp ? new Date(sale.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}
@@ -1783,9 +1893,11 @@ function App() {
                             <button
                               type="button"
                               onClick={() => {
-                                if (confirm(`Delete sale of ${sale.productName || 'this product'}?`)) {
-                                  handleDeleteSale(sale.id);
-                                }
+                                setDeleteSaleConfirm({
+                                  id: sale.id,
+                                  name: sale.productName || 'Product',
+                                  amount: sale.totalRevenue || sale.amount || 0
+                                });
                               }}
                               className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-surface border border-border/50 hover:border-rose-400/40 transition-colors"
                               title="Delete Mistaken Sale"
@@ -1872,6 +1984,7 @@ function App() {
               sales={sales} 
               expenses={expenses} 
               products={products}
+              deviceId={deviceId}
               onEditSale={startEditSale}
               onDeleteSale={handleDeleteSale}
               onEditExpense={startEditExpense}
@@ -2089,55 +2202,6 @@ function App() {
               </div>
             </div>
 
-            {/* Cloud Sync & Backend Server Connection Card */}
-            <div className="bg-card border border-border/80 rounded-2xl p-5 sm:p-7 shadow-sm">
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <div className="flex items-center gap-2">
-                  <Globe className="w-5 h-5 text-amber-400" />
-                  <h3 className="text-base font-extrabold text-foreground tracking-tight">Cloud Sync & Server Connection</h3>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full ${online && !syncError ? 'bg-emerald-400' : (!online ? 'bg-zinc-500' : 'bg-amber-400 animate-pulse')}`} />
-                  <span className="text-xs font-bold text-muted-foreground">
-                    {online && !syncError ? 'Cloud Connected' : (!online ? 'Offline Storage Active' : 'Connecting to Cloud...')}
-                  </span>
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
-                MarketOS is offline-first. All products, sales, and expenses are persistently saved in your browser&apos;s local storage and survive page refreshes. When connected, they automatically transfer to your PostgreSQL database.
-              </p>
-
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-[11px] font-bold uppercase tracking-wider mb-1.5 text-muted-foreground">
-                    Backend API URL (Render / Live Server)
-                  </label>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <input 
-                      type="text" 
-                      value={customApiUrlInput} 
-                      onChange={(e) => setCustomApiUrlInput(e.target.value)}
-                      placeholder={getApiBaseUrl()}
-                      className="flex-1 bg-surface border border-border/80 rounded-xl px-4 py-2.5 text-foreground focus:outline-none focus:border-amber-400 text-xs font-mono font-medium transition-colors" 
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSaveCustomApiUrl}
-                      disabled={apiTestingStatus === 'testing'}
-                      className="pill-button px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-xs transition-all shadow-sm flex items-center justify-center gap-1.5 shrink-0"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${apiTestingStatus === 'testing' ? 'animate-spin' : ''}`} />
-                      <span>{apiTestingStatus === 'testing' ? 'Testing...' : 'Save & Test'}</span>
-                    </button>
-                  </div>
-                  <div className="text-[11px] text-muted-foreground/80 mt-1.5 flex flex-wrap items-center justify-between gap-1">
-                    <span>Current target: <code className="text-amber-400">{getApiBaseUrl()}</code></span>
-                    {apiTestingStatus === 'success' && <span className="text-emerald-400 font-bold">✓ Backend connection verified!</span>}
-                    {apiTestingStatus === 'error' && <span className="text-rose-400 font-bold">✕ Could not reach server (offline or warming up)</span>}
-                  </div>
-                </div>
-              </div>
-            </div>
 
             {/* Founder Admin Mission Control Shortcut */}
             {isFounder && (
@@ -2275,6 +2339,32 @@ function App() {
             setImageUrlPromptOpen(false);
           }}
           onCancel={() => setImageUrlPromptOpen(false)}
+        />
+
+        <AlertDialog
+          isOpen={!!deleteSaleConfirm}
+          title="Delete Sale Record"
+          description={`Are you sure you want to permanently delete this sale of ${deleteSaleConfirm?.name} (+₦${(deleteSaleConfirm?.amount || 0).toLocaleString()})? It will be removed across all devices.`}
+          type="danger"
+          confirmText="Yes, Delete Sale"
+          cancelText="Cancel"
+          onConfirm={() => {
+            if (deleteSaleConfirm) {
+              handleDeleteSale(deleteSaleConfirm.id);
+              setDeleteSaleConfirm(null);
+            }
+          }}
+          onCancel={() => setDeleteSaleConfirm(null)}
+        />
+
+        <AlertDialog
+          isOpen={!!saleUpdateNotice?.isOpen}
+          title="Sale Record Updated"
+          description={saleUpdateNotice?.message || "Your changes to this sale have been saved and synced across all your devices."}
+          type="success"
+          confirmText="Done"
+          isConfirmOnly={true}
+          onConfirm={() => setSaleUpdateNotice(null)}
         />
 
       </main>

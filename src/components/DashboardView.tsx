@@ -1,11 +1,13 @@
 import { useState, useMemo } from 'react';
 import { Activity, AlertCircle, TrendingUp, TrendingDown, DollarSign, Edit2, Trash2 } from 'lucide-react';
 import { calculateFinancials, stockOf } from '../utils/finance';
+import AlertDialog from './ui/AlertDialog';
 
 export default function DashboardView({ 
   sales, 
   expenses, 
   products,
+  deviceId,
   onEditSale,
   onDeleteSale,
   onEditExpense,
@@ -14,11 +16,18 @@ export default function DashboardView({
   sales: any[], 
   expenses: any[], 
   products: any[],
+  deviceId?: string,
   onEditSale?: (sale: any) => void,
   onDeleteSale?: (saleId: string) => void,
   onEditExpense?: (expense: any) => void,
   onDeleteExpense?: (expenseId: string) => void
 }) {
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState<{
+    id: string;
+    type: 'sale' | 'expense';
+    title: string;
+    desc: string;
+  } | null>(null);
   const [timePeriod, setTimePeriod] = useState<'today' | 'week' | 'month' | 'year' | 'all' | 'custom'>('today');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -352,11 +361,24 @@ export default function DashboardView({
                       {activity.type === 'sale' ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
                     </div>
                     <div className="min-w-0">
-                      <div className="font-bold text-foreground text-sm break-words flex items-center gap-2">
+                      <div className="font-bold text-foreground text-sm break-words flex flex-wrap items-center gap-1.5 sm:gap-2">
                         <span>{activity.type === 'sale' ? `Sold ${activity.productName}` : activity.category || 'Expense'}</span>
                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-surface border border-border/60 text-muted-foreground uppercase">
                           {activity.type === 'sale' ? (activity.unitName ? `${activity.quantitySold} ${activity.unitName}` : 'Sale') : 'Expense'}
                         </span>
+                        {activity.updatedByDevice ? (
+                          activity.updatedByDevice === deviceId ? (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                              This device
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-sky-500/10 text-sky-400 border border-sky-500/20 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+                              Another device
+                            </span>
+                          )
+                        ) : null}
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5 break-words">
                         {activity.timestamp ? new Date(activity.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}
@@ -387,9 +409,12 @@ export default function DashboardView({
                         <button
                           type="button"
                           onClick={() => {
-                            if (confirm(`Delete sale record for "${activity.productName}"?`)) {
-                              onDeleteSale(activity.id);
-                            }
+                            setDeleteConfirmItem({
+                              type: 'sale',
+                              id: activity.id,
+                              title: `Delete Sale of ${activity.productName || 'this item'}`,
+                              desc: `Are you sure you want to delete this sale record (+₦${(activity.totalRevenue || activity.amount || 0).toLocaleString()})? This will be removed across all devices.`
+                            });
                           }}
                           className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-surface border border-border/40 hover:border-rose-400/40 transition-colors"
                           title="Delete Sale Record"
@@ -411,9 +436,12 @@ export default function DashboardView({
                         <button
                           type="button"
                           onClick={() => {
-                            if (confirm(`Delete expense "${activity.category || activity.description || 'Expense'}"?`)) {
-                              onDeleteExpense(activity.id);
-                            }
+                            setDeleteConfirmItem({
+                              type: 'expense',
+                              id: activity.id,
+                              title: `Delete Expense "${activity.category || activity.description || 'Expense'}"`,
+                              desc: `Are you sure you want to delete this expense record (-₦${(activity.amount || 0).toLocaleString()})? This will be removed across all devices.`
+                            });
                           }}
                           className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-surface border border-border/40 hover:border-rose-400/40 transition-colors"
                           title="Delete Expense"
@@ -428,6 +456,26 @@ export default function DashboardView({
           </div>
         )}
       </div>
+
+      <AlertDialog
+        isOpen={!!deleteConfirmItem}
+        title={deleteConfirmItem?.title || "Delete Record"}
+        description={deleteConfirmItem?.desc || "Are you sure you want to delete this record?"}
+        type="danger"
+        confirmText="Yes, Delete"
+        cancelText="Cancel"
+        onConfirm={() => {
+          if (deleteConfirmItem) {
+            if (deleteConfirmItem.type === 'sale' && onDeleteSale) {
+              onDeleteSale(deleteConfirmItem.id);
+            } else if (deleteConfirmItem.type === 'expense' && onDeleteExpense) {
+              onDeleteExpense(deleteConfirmItem.id);
+            }
+            setDeleteConfirmItem(null);
+          }
+        }}
+        onCancel={() => setDeleteConfirmItem(null)}
+      />
 
     </div>
   );
