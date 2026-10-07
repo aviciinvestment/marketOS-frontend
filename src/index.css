@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-gold: #F5C518;
+  --color-gold-light: #FDE047;
+  --color-gold-dark: #D97706;
+}
+
+@layer base {
+  :root {
+    --background: #f6f7fa;
+    --foreground: #09090b;
+    --card: #ffffff;
+    --card-foreground: #09090b;
+    --surface: #f1f3f7;
+    --surface-hover: #e5e8ee;
+    --border: #eceef3;
+    --accent: #f1f3f7;
+    --accent-foreground: #09090b;
+    --muted: #f1f3f7;
+    --muted-foreground: #6b7280;
+  }
+  .dark {
+    --background: #09090b;
+    --foreground: #f4f4f5;
+    --card: #121215;
+    --card-foreground: #ffffff;
+    --surface: #1a1a20;
+    --surface-hover: #22222a;
+    --border: rgba(255, 255, 255, 0.05);
+    --accent: #191920;
+    --accent-foreground: #ffffff;
+    --muted: #17171d;
+    --muted-foreground: #8a8a93;
+  }
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (max-width: 640px) {
+  html {
+    font-size: 15px; /* Fluid rem baseline scaling for mobile */
+  }
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+/* Custom minimal scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(150, 150, 150, 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 150, 0.35);
+}
+
+/* Smooth tactile click effect */
+.pill-button {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pill-button:active {
+  transform: scale(0.97);
+}

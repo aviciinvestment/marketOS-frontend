@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <title>marketOS — Business & Finance Hub for Nigerian Retailers</title>
+    
+    <!-- Primary SEO Meta Tags -->
+    <meta name="title" content="marketOS — Business & Finance Hub for Nigerian Retailers" />
+    <meta name="description" content="Nigeria's smart commercial inventory and retail finance hub. Track stock yields, customer sales, Cost of Goods Sold (COGS), business expenses, and real net profit in Naira (₦) with instant cloud sync. NDPA 2023 compliant." />
+    <meta name="keywords" content="marketOS, Nigeria retail POS, inventory tracker Nigeria, sales recorder Naira, business profit calculator Nigeria, SME accounting software, NDPA compliant business tool, Lagos retail, Nigerian trade app" />
+    <meta name="author" content="marketOS" />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#09090b" />
+    <meta name="application-name" content="marketOS" />
+
+    <!-- Open Graph / Facebook / WhatsApp Preview Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="marketOS" />
+    <meta property="og:url" content="https://marketos.app/" />
+    <meta property="og:title" content="marketOS — Business & Finance Hub for Nigerian Retailers" />
+    <meta property="og:description" content="Effortlessly track stock yields, sales, Cost of Goods Sold (COGS), daily expenses, and true net profit in Naira (₦) with instant cloud sync." />
+    <meta property="og:image" content="/og-image.jpg" />
+    <meta property="og:image:secure_url" content="/og-image.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="675" />
+    <meta property="og:image:alt" content="marketOS — Business & Finance Hub for Nigerian Retailers" />
+    <meta property="og:locale" content="en_NG" />
+
+    <!-- Twitter / X Card Preview -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@marketos" />
+    <meta name="twitter:creator" content="@marketos" />
+    <meta name="twitter:title" content="marketOS — Business & Finance Hub for Nigerian Retailers" />
+    <meta name="twitter:description" content="Track purchases, sales yield, COGS, expenses, and real profit in Naira (₦). Designed for Nigerian retailers & SMEs." />
+    <meta name="twitter:image" content="/og-image.jpg" />
+
+    <!-- Structured Data (JSON-LD) for Search Engines -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "marketOS",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "All",
+        "browserRequirements": "Requires JavaScript. Requires HTML5.",
+        "description": "Smart commercial retail, inventory, and point-of-sale accounting hub for Nigerian small and medium-sized enterprises (SMEs).",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "NGN"
+        },
+        "featureList": [
+          "Real-time Cost of Goods Sold (COGS) Payback Tracking",
+          "Unit Yield and Breakdown Calculator",
+          "Operational Expense Allocation",
+          "Gross and Net Profit Analytics in Naira (₦)",
+          "NDPA 2023 Compliant Data Protection"
+        ]
+      }
+    </script>
+
+    <script>
+      (function() {
+        try {
+          var theme = localStorage.getItem('marketos_theme');
+          if (theme === 'light') {
+            document.documentElement.classList.remove('dark');
+          } else {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body class="bg-background text-foreground antialiased selection:bg-amber-400 selection:text-black">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

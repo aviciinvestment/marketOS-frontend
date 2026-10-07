@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <style>
+      @keyframes pulseCircle {
+        0%, 100% {
+          opacity: 1;
+          transform: scale(1);
+          transform-origin: 32px 32px;
+        }
+        50% {
+          opacity: 0.18;
+          transform: scale(0.88);
+          transform-origin: 32px 32px;
+        }
+      }
+      @keyframes rotateRing {
+        0% {
+          transform: rotate(0deg);
+          transform-origin: 32px 32px;
+          stroke-dashoffset: 0;
+        }
+        50% {
+          stroke-dashoffset: 14;
+        }
+        100% {
+          transform: rotate(360deg);
+          transform-origin: 32px 32px;
+          stroke-dashoffset: 28;
+        }
+      }
+      .core-circle {
+        animation: pulseCircle 2.2s ease-in-out infinite;
+      }
+      .offset-ring {
+        animation: rotateRing 8s linear infinite;
+      }
+    </style>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Dark Backing for pristine contrast in all OS taskbars/tabs -->
+  <circle cx="32" cy="32" r="30" fill="#09090b" />
+
+  <!-- Outer Round Offset Stroke Ring -->
+  <circle 
+    class="offset-ring" 
+    cx="32" 
+    cy="32" 
+    r="23" 
+    stroke="#F5C518" 
+    stroke-width="3" 
+    stroke-linecap="round" 
+    stroke-dasharray="24 10" 
+    fill="none" 
+    opacity="0.85"
+  >
+    <animateTransform 
+      attributeName="transform" 
+      type="rotate" 
+      from="0 32 32" 
+      to="360 32 32" 
+      dur="8s" 
+      repeatCount="indefinite" 
+    />
+  </circle>
+
+  <!-- Glowing Yellow Circle that comes on and off -->
+  <circle 
+    class="core-circle" 
+    cx="32" 
+    cy="32" 
+    r="13" 
+    fill="#F5C518" 
+    filter="url(#glow)"
+  >
+    <animate 
+      attributeName="opacity" 
+      values="1;0.2;1" 
+      dur="2.2s" 
+      repeatCount="indefinite" 
+    />
+  </circle>
+</svg>
