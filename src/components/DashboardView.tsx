@@ -1,36 +1,43 @@
 import { useState, useMemo } from 'react';
-import { Activity, AlertCircle, TrendingUp, TrendingDown, DollarSign, Edit2, Trash2 } from 'lucide-react';
+import { Activity, AlertCircle, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
 import { calculateFinancials, stockOf } from '../utils/finance';
-import AlertDialog from './ui/AlertDialog';
 
 export default function DashboardView({ 
   sales, 
   expenses, 
   products,
-  deviceId,
-  onEditSale,
-  onDeleteSale,
-  onEditExpense,
-  onDeleteExpense
+  timePeriod: controlledTimePeriod,
+  setTimePeriod: setControlledTimePeriod,
+  customStart: controlledCustomStart,
+  setCustomStart: setControlledCustomStart,
+  customEnd: controlledCustomEnd,
+  setCustomEnd: setControlledCustomEnd
 }: { 
-  sales: any[], 
-  expenses: any[], 
-  products: any[],
-  deviceId?: string,
-  onEditSale?: (sale: any) => void,
-  onDeleteSale?: (saleId: string) => void,
-  onEditExpense?: (expense: any) => void,
-  onDeleteExpense?: (expenseId: string) => void
+  sales: any[]; 
+  expenses: any[]; 
+  products: any[];
+  deviceId?: string;
+  timePeriod?: 'today' | 'week' | 'month' | 'year' | 'all' | 'custom';
+  setTimePeriod?: (period: 'today' | 'week' | 'month' | 'year' | 'all' | 'custom') => void;
+  customStart?: string;
+  setCustomStart?: (start: string) => void;
+  customEnd?: string;
+  setCustomEnd?: (end: string) => void;
+  onEditSale?: (sale: any) => void;
+  onDeleteSale?: (saleId: string) => void;
+  onEditExpense?: (expense: any) => void;
+  onDeleteExpense?: (expenseId: string) => void;
 }) {
-  const [deleteConfirmItem, setDeleteConfirmItem] = useState<{
-    id: string;
-    type: 'sale' | 'expense';
-    title: string;
-    desc: string;
-  } | null>(null);
-  const [timePeriod, setTimePeriod] = useState<'today' | 'week' | 'month' | 'year' | 'all' | 'custom'>('today');
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
+  const [localTimePeriod, setLocalTimePeriod] = useState<'today' | 'week' | 'month' | 'year' | 'all' | 'custom'>('today');
+  const [localCustomStart, setLocalCustomStart] = useState('');
+  const [localCustomEnd, setLocalCustomEnd] = useState('');
+
+  const timePeriod = controlledTimePeriod !== undefined ? controlledTimePeriod : localTimePeriod;
+  const setTimePeriod = setControlledTimePeriod || setLocalTimePeriod;
+  const customStart = controlledCustomStart !== undefined ? controlledCustomStart : localCustomStart;
+  const setCustomStart = setControlledCustomStart || setLocalCustomStart;
+  const customEnd = controlledCustomEnd !== undefined ? controlledCustomEnd : localCustomEnd;
+  const setCustomEnd = setControlledCustomEnd || setLocalCustomEnd;
 
   // Filter logic based on timestamp
   const now = new Date();
@@ -61,8 +68,8 @@ export default function DashboardView({
     });
   };
 
-  const filteredSales = useMemo(() => filterByTime(sales), [sales, timePeriod]);
-  const filteredExpenses = useMemo(() => filterByTime(expenses), [expenses, timePeriod]);
+  const filteredSales = useMemo(() => filterByTime(sales), [sales, timePeriod, customStart, customEnd]);
+  const filteredExpenses = useMemo(() => filterByTime(expenses), [expenses, timePeriod, customStart, customEnd]);
 
   const { totalSales: moneyIn, grossProfit: productProfit, totalExpenses: moneyOut, netProfit: profit } = useMemo(
     () => calculateFinancials(filteredSales, filteredExpenses, products),
@@ -98,14 +105,25 @@ export default function DashboardView({
   } else if (profit < 0) {
     greetingMsg = "You're running at a loss currently. Keep an eye on expenses.";
   } else if (moneyIn === 0) {
-    greetingMsg = "No sales recorded for this period yet.";
+    greetingMsg = "Welcome! Ready to record your sales and expenses.";
   }
 
-  const financialStory = `You made ₦${productProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })} in profit from selling your products. You spent ₦${moneyOut.toLocaleString(undefined, { maximumFractionDigits: 0 })} on running the business. After these expenses, your estimated profit is ₦${profit.toLocaleString(undefined, { maximumFractionDigits: 0 })}.`;
+  let financialStory = `In this period, you have brought in ₦${moneyIn.toLocaleString()} from sales. `;
+  if (productProfit > 0) {
+    financialStory += `After covering the cost of goods sold, you made ₦${productProfit.toLocaleString()} from your products. `;
+  }
+  if (moneyOut > 0) {
+    financialStory += `You spent ₦${moneyOut.toLocaleString()} on business costs (like transportation or shop upkeep). `;
+  }
+  if (profit > 0) {
+    financialStory += `That leaves you with ₦${profit.toLocaleString()} in clean profit to take home!`;
+  } else if (profit < 0) {
+    financialStory += `Currently, your spending exceeds your earnings by ₦${Math.abs(profit).toLocaleString()}.`;
+  }
 
   let productMsg = "";
-  if (bestProduct) {
-    productMsg = `${bestProduct.name} is your top-selling product.`;
+  if (bestProduct && bestProduct.revenue > 0) {
+    productMsg = `${bestProduct.name} is your top seller right now (₦${bestProduct.revenue.toLocaleString()}).`;
   }
 
   let stockMsg = "";
@@ -120,7 +138,7 @@ export default function DashboardView({
   return (
     <div className="flex flex-col gap-6">
       
-      {/* Time Period Selector - Sleek Pill Tabs */}
+      {/* Single Unified Time Period Selector - Sleek Pill Tabs Serving All Insights */}
       <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
         {(['today', 'week', 'month', 'year', 'custom', 'all'] as const).map(period => {
           const isActive = timePeriod === period;
@@ -141,19 +159,20 @@ export default function DashboardView({
       </div>
 
       {timePeriod === 'custom' && (
-        <div className="flex flex-wrap items-center gap-2 text-xs font-bold">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-bold bg-card p-3 rounded-xl border border-border/60">
+          <span className="text-muted-foreground">From:</span>
           <input 
             type="date" 
             value={customStart} 
             onChange={(e) => setCustomStart(e.target.value)}
-            className="bg-card border border-border/60 rounded-xl px-3 py-2 text-foreground outline-none focus:border-amber-400 font-semibold"
+            className="bg-surface border border-border/60 rounded-xl px-3 py-2 text-foreground outline-none focus:border-amber-400 font-semibold"
           />
-          <span className="text-muted-foreground">to</span>
+          <span className="text-muted-foreground">To:</span>
           <input 
             type="date" 
             value={customEnd} 
             onChange={(e) => setCustomEnd(e.target.value)}
-            className="bg-card border border-border/60 rounded-xl px-3 py-2 text-foreground outline-none focus:border-amber-400 font-semibold"
+            className="bg-surface border border-border/60 rounded-xl px-3 py-2 text-foreground outline-none focus:border-amber-400 font-semibold"
           />
         </div>
       )}
@@ -193,112 +212,99 @@ export default function DashboardView({
         </div>
       </div>
 
-      {/* Main Financial KPIs Grid - 2 cols on tablet/desktop, 1 col on mobile */}
+      {/* Main Financial KPIs Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
         
         {/* 1. Money Made */}
         <div className="min-w-0 bg-card rounded-2xl p-3.5 sm:p-4 xl:p-5 border border-border/50 shadow-sm flex flex-col justify-between hover:border-emerald-500/30 transition-all group">
           <div className="min-w-0">
-            {/* Top row: Icon on left, Tag on right */}
             <div className="flex items-center justify-between gap-2 mb-2.5">
-              <div className="w-8 h-8 xl:w-9 xl:h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 xl:w-9 xl:h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
                 <DollarSign className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-emerald-400" />
               </div>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-surface border border-border/70 text-emerald-400 shrink-0 uppercase tracking-wider whitespace-nowrap">
-                Sales
+              <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 shrink-0 uppercase tracking-wider whitespace-nowrap">
+                Money In
               </span>
             </div>
 
-            {/* Label */}
             <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">
-              Money Made
+              Total Revenue
             </div>
 
-            {/* Big Currency Value */}
             <div 
-              className="text-xl sm:text-2xl xl:text-3xl font-black tracking-tight text-foreground my-1 break-words"
+              className="text-xl sm:text-2xl xl:text-3xl font-black text-foreground tracking-tight my-1 break-words"
               title={`₦${moneyIn.toLocaleString()}`}
             >
               ₦{moneyIn.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </div>
           </div>
 
-          {/* Bottom Explanatory Caption - Fully visible */}
           <div className="text-xs text-muted-foreground font-medium pt-2.5 mt-1.5 border-t border-border/40 leading-relaxed">
-            Total collected from customers
+            All customer cash collected
           </div>
         </div>
 
-        {/* 2. Gross Profit */}
-        <div className="min-w-0 bg-card rounded-2xl p-3.5 sm:p-4 xl:p-5 border border-border/50 shadow-sm flex flex-col justify-between hover:border-sky-400/30 transition-all group">
+        {/* 2. Product Profit */}
+        <div className="min-w-0 bg-card rounded-2xl p-3.5 sm:p-4 xl:p-5 border border-border/50 shadow-sm flex flex-col justify-between hover:border-amber-500/30 transition-all group">
           <div className="min-w-0">
-            {/* Top row: Icon on left, Tag on right */}
             <div className="flex items-center justify-between gap-2 mb-2.5">
-              <div className="w-8 h-8 xl:w-9 xl:h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center shrink-0">
-                <TrendingUp className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-sky-400" />
+              <div className="w-8 h-8 xl:w-9 xl:h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">
+                <TrendingUp className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-amber-400" />
               </div>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-surface border border-border/70 text-sky-400 shrink-0 uppercase tracking-wider whitespace-nowrap">
-                Product
+              <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 shrink-0 uppercase tracking-wider whitespace-nowrap">
+                Mark-up
               </span>
             </div>
 
-            {/* Label */}
             <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">
               Gross Profit
             </div>
 
-            {/* Big Currency Value */}
             <div 
-              className={`text-xl sm:text-2xl xl:text-3xl font-black tracking-tight my-1 break-words ${productProfit < 0 ? 'text-rose-400' : 'text-sky-400'}`}
-              title={`${productProfit < 0 ? '-' : ''}₦${Math.abs(productProfit).toLocaleString()}`}
+              className="text-xl sm:text-2xl xl:text-3xl font-black text-amber-400 tracking-tight my-1 break-words"
+              title={`₦${productProfit.toLocaleString()}`}
             >
-              {productProfit < 0 ? '-' : ''}₦{Math.abs(productProfit).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              ₦{productProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </div>
           </div>
 
-          {/* Bottom Explanatory Caption - Fully visible */}
           <div className="text-xs text-muted-foreground font-medium pt-2.5 mt-1.5 border-t border-border/40 leading-relaxed">
-            Sales minus cost of goods
+            Revenue minus cost of items sold
           </div>
         </div>
-        
-        {/* 3. Expenses */}
-        <div className="min-w-0 bg-card rounded-2xl p-3.5 sm:p-4 xl:p-5 border border-border/50 shadow-sm flex flex-col justify-between hover:border-amber-400/30 transition-all group">
+
+        {/* 3. Business Expenses */}
+        <div className="min-w-0 bg-card rounded-2xl p-3.5 sm:p-4 xl:p-5 border border-border/50 shadow-sm flex flex-col justify-between hover:border-rose-500/30 transition-all group">
           <div className="min-w-0">
-            {/* Top row: Icon on left, Tag on right */}
             <div className="flex items-center justify-between gap-2 mb-2.5">
-              <div className="w-8 h-8 xl:w-9 xl:h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
-                <TrendingDown className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-amber-400" />
+              <div className="w-8 h-8 xl:w-9 xl:h-9 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center shrink-0">
+                <TrendingDown className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-rose-400" />
               </div>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-surface border border-border/70 text-amber-400 shrink-0 uppercase tracking-wider whitespace-nowrap">
-                Operations
+              <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-400 shrink-0 uppercase tracking-wider whitespace-nowrap">
+                Money Out
               </span>
             </div>
 
-            {/* Label */}
             <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">
-              Expenses
+              Operational Costs
             </div>
 
-            {/* Big Currency Value */}
             <div 
-              className="text-xl sm:text-2xl xl:text-3xl font-black tracking-tight text-amber-400 my-1 break-words"
+              className="text-xl sm:text-2xl xl:text-3xl font-black text-rose-400 tracking-tight my-1 break-words"
               title={`₦${moneyOut.toLocaleString()}`}
             >
               ₦{moneyOut.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </div>
           </div>
 
-          {/* Bottom Explanatory Caption - Fully visible */}
           <div className="text-xs text-muted-foreground font-medium pt-2.5 mt-1.5 border-t border-border/40 leading-relaxed">
-            Transport, power & other costs
+            Power, transit, rent & operations
           </div>
         </div>
 
-        {/* 4. Net Profit - Standout Card */}
-        <div className="min-w-0 bg-card rounded-2xl p-3.5 sm:p-4 xl:p-5 border border-border/50 shadow-sm flex flex-col justify-between hover:border-emerald-400/30 transition-all group">
+        {/* 4. Net Profit */}
+        <div className="min-w-0 bg-card rounded-2xl p-3.5 sm:p-4 xl:p-5 border border-border/50 shadow-sm flex flex-col justify-between hover:border-emerald-500/30 transition-all group">
           <div className="min-w-0">
-            {/* Top row: Icon on left, Tag on right */}
             <div className="flex items-center justify-between gap-2 mb-2.5">
               <div className="w-8 h-8 xl:w-9 xl:h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
                 <Activity className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-emerald-400" />
@@ -308,12 +314,10 @@ export default function DashboardView({
               </span>
             </div>
 
-            {/* Label */}
             <div className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-1">
               Net Profit
             </div>
 
-            {/* Big Currency Value */}
             <div 
               className={`text-xl sm:text-2xl xl:text-3xl font-black tracking-tight my-1 break-words ${profit < 0 ? 'text-rose-400' : 'text-emerald-400'}`}
               title={`${profit < 0 ? '-' : ''}₦${Math.abs(profit).toLocaleString()}`}
@@ -322,160 +326,11 @@ export default function DashboardView({
             </div>
           </div>
 
-          {/* Bottom Explanatory Caption - Fully visible */}
           <div className="text-xs text-muted-foreground font-medium pt-2.5 mt-1.5 border-t border-border/40 leading-relaxed">
             Gross profit minus expenses
           </div>
         </div>
       </div>
-
-      {/* Recent Activity */}
-      <div className="bg-card rounded-2xl p-5 sm:p-7 border border-border/50 shadow-sm">
-        <div className="flex items-center justify-between mb-5">
-          <div>
-            <h3 className="font-extrabold text-foreground text-lg tracking-tight">Recent Activity</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Latest sales and business expenses</p>
-          </div>
-        </div>
-        
-        {filteredSales.length === 0 && filteredExpenses.length === 0 ? (
-          <div className="text-center py-10 text-muted-foreground text-sm bg-surface/50 rounded-xl border border-dashed border-border">
-            No activity recorded for this period yet.
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2.5">
-            {[...filteredSales.map(s => ({...s, type: 'sale'})), ...filteredExpenses.map(e => ({...e, type: 'expense'}))]
-              .sort((a, b) => new Date(b.timestamp || b.date || 0).getTime() - new Date(a.timestamp || a.date || 0).getTime())
-              .slice(0, 8)
-              .map((activity, idx) => (
-                <div 
-                  key={activity.id || idx} 
-                  className="flex justify-between items-center p-3 sm:p-3.5 rounded-xl bg-surface/40 hover:bg-surface border border-border/50 hover:border-border transition-all min-w-0 group"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                      activity.type === 'sale' 
-                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' 
-                        : 'bg-amber-500/15 text-amber-400 border border-amber-500/20'
-                    }`}>
-                      {activity.type === 'sale' ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="font-bold text-foreground text-sm break-words flex flex-wrap items-center gap-1.5 sm:gap-2">
-                        <span>{activity.type === 'sale' ? `Sold ${activity.productName}` : activity.category || 'Expense'}</span>
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-surface border border-border/60 text-muted-foreground uppercase">
-                          {activity.type === 'sale' ? (activity.unitName ? `${activity.quantitySold} ${activity.unitName}` : 'Sale') : 'Expense'}
-                        </span>
-                        {activity.updatedByDevice ? (
-                          activity.updatedByDevice === deviceId ? (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                              This device
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-sky-500/10 text-sky-400 border border-sky-500/20 flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
-                              Another device
-                            </span>
-                          )
-                        ) : null}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5 break-words">
-                        {activity.timestamp ? new Date(activity.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}
-                        {activity.description ? ` · ${activity.description}` : ''}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-3">
-                    <div className={`font-extrabold text-sm sm:text-base ${
-                      activity.type === 'sale' ? 'text-emerald-400' : 'text-amber-400'
-                    }`}>
-                      {activity.type === 'sale' ? '+' : '-'}₦{(activity.totalRevenue || activity.amount || 0).toLocaleString()}
-                    </div>
-
-                    <div className="flex items-center gap-1 opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                      {activity.type === 'sale' && onEditSale && (
-                        <button
-                          type="button"
-                          onClick={() => onEditSale(activity)}
-                          className="p-1.5 rounded-lg text-muted-foreground hover:text-amber-400 hover:bg-surface border border-border/40 hover:border-amber-400/40 transition-colors"
-                          title="Edit Sale Record"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      {activity.type === 'sale' && onDeleteSale && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDeleteConfirmItem({
-                              type: 'sale',
-                              id: activity.id,
-                              title: `Delete Sale of ${activity.productName || 'this item'}`,
-                              desc: `Are you sure you want to delete this sale record (+₦${(activity.totalRevenue || activity.amount || 0).toLocaleString()})? This will be removed across all devices.`
-                            });
-                          }}
-                          className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-surface border border-border/40 hover:border-rose-400/40 transition-colors"
-                          title="Delete Sale Record"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      {activity.type === 'expense' && onEditExpense && (
-                        <button
-                          type="button"
-                          onClick={() => onEditExpense(activity)}
-                          className="p-1.5 rounded-lg text-muted-foreground hover:text-amber-400 hover:bg-surface border border-border/40 hover:border-amber-400/40 transition-colors"
-                          title="Edit Expense"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      {activity.type === 'expense' && onDeleteExpense && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDeleteConfirmItem({
-                              type: 'expense',
-                              id: activity.id,
-                              title: `Delete Expense "${activity.category || activity.description || 'Expense'}"`,
-                              desc: `Are you sure you want to delete this expense record (-₦${(activity.amount || 0).toLocaleString()})? This will be removed across all devices.`
-                            });
-                          }}
-                          className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-surface border border-border/40 hover:border-rose-400/40 transition-colors"
-                          title="Delete Expense"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <AlertDialog
-        isOpen={!!deleteConfirmItem}
-        title={deleteConfirmItem?.title || "Delete Record"}
-        description={deleteConfirmItem?.desc || "Are you sure you want to delete this record?"}
-        type="danger"
-        confirmText="Yes, Delete"
-        cancelText="Cancel"
-        onConfirm={() => {
-          if (deleteConfirmItem) {
-            if (deleteConfirmItem.type === 'sale' && onDeleteSale) {
-              onDeleteSale(deleteConfirmItem.id);
-            } else if (deleteConfirmItem.type === 'expense' && onDeleteExpense) {
-              onDeleteExpense(deleteConfirmItem.id);
-            }
-            setDeleteConfirmItem(null);
-          }
-        }}
-        onCancel={() => setDeleteConfirmItem(null)}
-      />
 
     </div>
   );

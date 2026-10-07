@@ -28,6 +28,8 @@ export interface Product {
 
   status: "Active" | "Draft" | "Archived";
   views?: number;
+  updatedAt?: number;
+  updatedByDevice?: string;
 }
 
 export interface SaleTransaction {
@@ -49,6 +51,8 @@ export interface SaleTransaction {
   fractionOfTotalSold: number; // (quantitySold / yieldFromTotal)
   
   timestamp: string; // ISO string
+  updatedAt?: number;
+  updatedByDevice?: string;
 }
 
 export interface BusinessExpense {
@@ -57,4 +61,6 @@ export interface BusinessExpense {
   amount: number;
   description: string;
   date: string; // ISO string
+  updatedAt?: number;
+  updatedByDevice?: string;
 }

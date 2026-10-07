@@ -425,6 +425,11 @@ function App() {
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<any>(null);
 
+  // Unified Time Period State for Insights (serves all insight components)
+  const [insightTimePeriod, setInsightTimePeriod] = useState<'today' | 'week' | 'month' | 'year' | 'all' | 'custom'>('today');
+  const [insightCustomStart, setInsightCustomStart] = useState('');
+  const [insightCustomEnd, setInsightCustomEnd] = useState('');
+
   // Edit Product State
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editForm, setEditForm] = useState<any>(null);
@@ -1300,9 +1305,10 @@ function App() {
     <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row font-sans transition-colors duration-300">
       
       {/* Sidebar (Desktop) - Toggleable / Collapsible */}
-      <aside className={`hidden md:flex flex-col min-h-screen bg-card border-r border-border/60 transition-all duration-300 z-40 shrink-0 ${
-        isSidebarCollapsed ? 'w-20 px-3 py-6' : 'w-64 px-6 py-8'
-      }`}>
+      {(activeTab as any) !== 'guide' && (
+        <aside className={`hidden md:flex flex-col min-h-screen bg-card border-r border-border/60 transition-all duration-300 z-40 shrink-0 ${
+          isSidebarCollapsed ? 'w-20 px-3 py-6' : 'w-64 px-6 py-8'
+        }`}>
         <div className={`mb-8 flex items-center ${isSidebarCollapsed ? 'flex-col gap-4' : 'justify-between'} px-1`}>
           <BrandLogo size={isSidebarCollapsed ? "sm" : "md"} showText={!isSidebarCollapsed} />
           <button
@@ -1433,9 +1439,10 @@ function App() {
           )}
         </nav>
       </aside>
+      )}
 
-      {/* Floating Bottom Nav for Mobile - Strictly 3: Home, Stock, Insights */}
-      <nav className="fixed bottom-4 left-4 right-4 max-w-sm mx-auto bg-card/95 backdrop-blur-xl border border-white/10 rounded-full px-5 py-2.5 flex items-center justify-between shadow-2xl z-50 md:hidden">
+      {/* Floating Bottom Nav for Mobile - Strictly 3: Home, Stock, Insights (Always available on Guide tab for easy return) */}
+      <nav className={`fixed bottom-4 left-4 right-4 max-w-sm mx-auto bg-card/95 backdrop-blur-xl border border-white/10 rounded-full px-5 py-2.5 flex items-center justify-between shadow-2xl z-50 ${(activeTab as any) === 'guide' ? 'flex' : 'md:hidden'}`}>
         <button 
           onClick={() => setActiveTab('home')}
           className={`flex flex-col items-center gap-1 transition-all flex-1 ${
@@ -1468,11 +1475,12 @@ function App() {
       </nav>
 
       {/* Main Content Area */}
-      <main className="flex-1 w-full max-w-7xl mx-auto pb-28 md:pb-10 relative overflow-x-hidden">
+      <main className={`flex-1 w-full ${(activeTab as any) === 'guide' ? 'max-w-none p-0 overflow-x-clip' : 'max-w-7xl mx-auto pb-28 md:pb-10 overflow-x-hidden'} relative`}>
         
-        {/* Header - Inspired by Image 2 "Search Habit" bar */}
-        {/* Header */}
-        <header className="px-4 sm:px-8 py-3.5 sm:py-5 flex items-center justify-between gap-2.5 sm:gap-4 border-b border-border/40 md:border-b-0">
+        {/* Main Header & Sync Bar (Hidden when on App Guide to give clean full-screen experience) */}
+        {(activeTab as any) !== 'guide' && (
+          <>
+            <header className="px-4 sm:px-8 py-3.5 sm:py-5 flex items-center justify-between gap-2.5 sm:gap-4 border-b border-border/40 md:border-b-0">
           <div className="md:hidden shrink-0 pr-1 flex items-center gap-2">
             <BrandLogo size="sm" showText={false} />
           </div>
@@ -1731,8 +1739,10 @@ function App() {
             </div>
           </div>
         )}
+          </>
+        )}
 
-        <div className="px-3 sm:px-5 xl:px-8 py-2">
+        <div className={(activeTab as any) === 'guide' ? 'p-0' : 'px-3 sm:px-5 xl:px-8 py-2'}>
           
           {activeTab === 'home' && (
             <div className="flex flex-col gap-6 max-w-4xl mx-auto">
@@ -1912,6 +1922,15 @@ function App() {
                 )}
               </div>
 
+              {/* Business Expenses Component */}
+              <ExpenseList 
+                expenses={expenses}
+                deviceId={deviceId}
+                onEdit={startEditExpense}
+                onDelete={handleDeleteExpense}
+                onAdd={() => { setEditingExpense(null); setIsExpenseModalOpen(true); }}
+              />
+
             </div>
           )}
 
@@ -1979,46 +1998,41 @@ function App() {
 
         {activeTab === 'insights' && (
           <div className="px-3 sm:px-5 xl:px-8 py-2 flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-3 duration-300">
-            {/* 1. Business Summary, Financial KPIs & Recent Activity */}
+            {/* 1. Business Summary & Financial KPIs */}
             <DashboardView 
               sales={sales} 
               expenses={expenses} 
               products={products}
               deviceId={deviceId}
-              onEditSale={startEditSale}
-              onDeleteSale={handleDeleteSale}
-              onEditExpense={startEditExpense}
-              onDeleteExpense={handleDeleteExpense}
+              timePeriod={insightTimePeriod}
+              setTimePeriod={setInsightTimePeriod}
+              customStart={insightCustomStart}
+              setCustomStart={setInsightCustomStart}
+              customEnd={insightCustomEnd}
+              setCustomEnd={setInsightCustomEnd}
             />
 
             {/* 2. Product Profit & Cost Recovery Analysis */}
             <ProductAnalysis products={products} sales={sales} onSell={handleSelectProduct} />
 
             {/* 3. Business Expenses Manager */}
-            <div className="bg-card rounded-2xl p-4 sm:p-6 border border-border/50 shadow-sm flex flex-col gap-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-extrabold text-foreground tracking-tight">Business Expenses</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">Track transportation, power, feeding, and operational costs</p>
-                </div>
-                <button 
-                  onClick={() => { setEditingExpense(null); setIsExpenseModalOpen(true); }}
-                  className="pill-button flex items-center justify-center gap-2 bg-[#F5C518] hover:bg-[#EAB308] text-black px-4 sm:px-5 py-2.5 rounded-full text-xs font-extrabold transition-all shadow-md shadow-amber-500/15"
-                >
-                  <Plus className="w-4 h-4" />
-                  Record Money Spent
-                </button>
-              </div>
+            <ExpenseList 
+              expenses={expenses}
+              deviceId={deviceId}
+              onEdit={startEditExpense}
+              onDelete={handleDeleteExpense}
+              onAdd={() => { setEditingExpense(null); setIsExpenseModalOpen(true); }}
+            />
 
-              <ExpenseList 
-                expenses={expenses}
-                onEdit={startEditExpense}
-                onDelete={handleDeleteExpense}
-              />
-            </div>
-
-            {/* 4. Deep Insights & Period Comparison */}
-            <InsightsView sales={sales} expenses={expenses} products={products} />
+            {/* 4. Deep Insights & Period Comparison (Driven by Unified Timeframe) */}
+            <InsightsView 
+              sales={sales} 
+              expenses={expenses} 
+              products={products}
+              timePeriod={insightTimePeriod}
+              customStart={insightCustomStart}
+              customEnd={insightCustomEnd}
+            />
           </div>
         )}
 
@@ -2256,9 +2270,9 @@ function App() {
           </div>
         )}
 
-        {/* Logged-in App Guide View - Floating bottom nav and header remain visible! */}
+        {/* Logged-in App Guide View - Full-screen with floating bottom nav bar */}
         {(activeTab as any) === 'guide' && (
-          <div className="relative min-h-[calc(100vh-120px)] bg-[#07090E] -mx-3 sm:-mx-5 xl:-mx-8 -my-2 rounded-2xl overflow-hidden border border-white/5 shadow-2xl">
+          <div className="relative min-h-screen bg-[#07090E] pb-24">
             <LandingPage
               currentUserEmail={user?.email}
               onLaunchApp={() => setActiveTab('home')}

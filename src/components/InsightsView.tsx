@@ -1,19 +1,29 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { BarChart2, TrendingUp, Activity } from 'lucide-react';
 import { calculateFinancials, saleRevenue, stockOf } from '../utils/finance';
 
-export default function InsightsView({ sales, products }: { sales: any[], expenses: any[], products: any[] }) {
-  const [timePeriod, setTimePeriod] = useState<'today' | 'week' | 'month' | 'year' | 'custom'>('month');
-  
-  // Custom date range state
-  const [customStart, setCustomStart] = useState('');
-  const [customEnd, setCustomEnd] = useState('');
+export type TimePeriodType = 'today' | 'week' | 'month' | 'year' | 'all' | 'custom';
 
+export default function InsightsView({ 
+  sales, 
+  products,
+  timePeriod = 'today',
+  customStart = '',
+  customEnd = ''
+}: { 
+  sales: any[]; 
+  expenses?: any[]; 
+  products: any[];
+  timePeriod?: TimePeriodType;
+  customStart?: string;
+  customEnd?: string;
+}) {
   const now = new Date();
 
   // Helper to filter sales/expenses by period
   const filterData = (items: any[], period: string, start?: Date, end?: Date) => {
     return items.filter(item => {
+      if (period === 'all') return true;
       const itemDate = new Date(item.timestamp || item.date || Date.now());
       if (isNaN(itemDate.getTime())) return true;
       
@@ -38,6 +48,7 @@ export default function InsightsView({ sales, products }: { sales: any[], expens
 
   // Helper to get previous period (for comparison)
   const filterPreviousData = (items: any[], period: string, start?: Date, end?: Date) => {
+    if (period === 'all') return [];
     return items.filter(item => {
       const itemDate = new Date(item.timestamp || item.date || Date.now());
       if (isNaN(itemDate.getTime())) return false;
@@ -84,9 +95,7 @@ export default function InsightsView({ sales, products }: { sales: any[], expens
     [previousSales, products]
   );
   
-  // Product Performance Calculation.
-  // Profit = money made from the product - its total purchase cost (payback model).
-  // It stays negative until the sales have covered what the goods cost.
+  // Product Performance Calculation
   const productStats = products.map(p => {
     const pSales = currentSales.filter(s => s.productId === p.id);
     const rev = pSales.reduce((acc, s) => acc + saleRevenue(s), 0);
@@ -117,11 +126,19 @@ export default function InsightsView({ sales, products }: { sales: any[], expens
   // Formulate textual insights
   const insights: React.ReactNode[] = [];
 
+  const periodLabel = timePeriod === 'all' 
+    ? 'All time' 
+    : timePeriod === 'today' 
+    ? 'Today' 
+    : timePeriod === 'custom' 
+    ? 'Selected custom period' 
+    : `This ${timePeriod}`;
+
   // 1. Business Growth Insight
   if (currentSales.length === 0 && previousSales.length === 0) {
-    insights.push(<p>You haven't recorded any sales yet for this period. Start recording sales to see insights.</p>);
-  } else if (previousSales.length === 0) {
-    insights.push(<p>This is your first period recording sales! You made <b>₦{currentGrossProfit.toLocaleString()}</b> in gross profit from <b>₦{currentRevenue.toLocaleString()}</b> in sales.</p>);
+    insights.push(<p>You haven't recorded any sales yet for <b>{periodLabel.toLowerCase()}</b>. Start recording sales to see insights.</p>);
+  } else if (previousSales.length === 0 || timePeriod === 'all') {
+    insights.push(<p>For <b>{periodLabel.toLowerCase()}</b>, you recorded <b>₦{currentGrossProfit.toLocaleString()}</b> in gross profit from <b>₦{currentRevenue.toLocaleString()}</b> in total sales.</p>);
   } else {
     // Compare periods
     const revDiff = currentRevenue - prevRevenue;
@@ -175,46 +192,6 @@ export default function InsightsView({ sales, products }: { sales: any[], expens
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-4 rounded-2xl border border-border/50 shadow-sm">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {(['today', 'week', 'month', 'year', 'custom'] as const).map(period => {
-            const isActive = timePeriod === period;
-            return (
-              <button
-                key={period}
-                onClick={() => setTimePeriod(period)}
-                className={`pill-button px-4 py-2 rounded-full text-xs font-bold capitalize transition-all ${
-                  isActive 
-                    ? 'bg-[#F5C518] text-black shadow-md shadow-amber-500/20' 
-                    : 'bg-surface border border-border text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                {period}
-              </button>
-            );
-          })}
-        </div>
-
-        {timePeriod === 'custom' && (
-          <div className="flex items-center gap-2 text-xs font-semibold">
-            <input 
-              type="date" 
-              value={customStart} 
-              onChange={(e) => setCustomStart(e.target.value)}
-              className="bg-surface border border-border/50 rounded-xl px-3 py-1.5 text-foreground outline-none focus:border-amber-400 font-medium"
-            />
-            <span className="text-muted-foreground">to</span>
-            <input 
-              type="date" 
-              value={customEnd} 
-              onChange={(e) => setCustomEnd(e.target.value)}
-              className="bg-surface border border-border/50 rounded-xl px-3 py-1.5 text-foreground outline-none focus:border-amber-400 font-medium"
-            />
-          </div>
-        )}
-      </div>
-
       {/* Narrative Insights Section */}
       <div className="bg-card border border-border/50 rounded-2xl p-5 sm:p-7 relative overflow-hidden shadow-sm">
         <div className="absolute top-0 right-0 w-80 h-40 bg-gradient-to-bl from-amber-400/10 via-amber-400/5 to-transparent rounded-bl-[60px] pointer-events-none" />
