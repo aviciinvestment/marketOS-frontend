@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Activity, AlertCircle, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
 import { calculateFinancials, stockOf } from '../utils/finance';
+import { useAppT, useAppLang, tf } from '../i18n';
 
 export default function DashboardView({ 
   sales, 
@@ -31,6 +32,9 @@ export default function DashboardView({
   const [localTimePeriod, setLocalTimePeriod] = useState<'today' | 'week' | 'month' | 'year' | 'all' | 'custom'>('today');
   const [localCustomStart, setLocalCustomStart] = useState('');
   const [localCustomEnd, setLocalCustomEnd] = useState('');
+
+  const T = useAppT();
+  const lang = useAppLang();
 
   const timePeriod = controlledTimePeriod !== undefined ? controlledTimePeriod : localTimePeriod;
   const setTimePeriod = setControlledTimePeriod || setLocalTimePeriod;
@@ -99,40 +103,40 @@ export default function DashboardView({
   });
 
   // Storytelling messages
-  let greetingMsg = "Here is how your business is doing.";
+  let greetingMsg = T('dash.doingWell');
   if (profit > 0) {
-    greetingMsg = "You're doing great! Your business is making money.";
+    greetingMsg = T('dash.great');
   } else if (profit < 0) {
-    greetingMsg = "You're running at a loss currently. Keep an eye on expenses.";
+    greetingMsg = T('dash.loss');
   } else if (moneyIn === 0) {
-    greetingMsg = "Welcome! Ready to record your sales and expenses.";
+    greetingMsg = T('dash.welcome');
   }
 
-  let financialStory = `In this period, you have brought in ₦${moneyIn.toLocaleString()} from sales. `;
+  let financialStory = `${tf(lang, 'story.inThisPeriod', moneyIn.toLocaleString())} `;
   if (productProfit > 0) {
-    financialStory += `After covering the cost of goods sold, you made ₦${productProfit.toLocaleString()} from your products. `;
+    financialStory += `${tf(lang, 'story.afterCosts', productProfit.toLocaleString())} `;
   }
   if (moneyOut > 0) {
-    financialStory += `You spent ₦${moneyOut.toLocaleString()} on business costs (like transportation or shop upkeep). `;
+    financialStory += `${tf(lang, 'story.spentCosts', moneyOut.toLocaleString())} `;
   }
   if (profit > 0) {
-    financialStory += `That leaves you with ₦${profit.toLocaleString()} in clean profit to take home!`;
+    financialStory += tf(lang, 'story.cleanProfit', profit.toLocaleString());
   } else if (profit < 0) {
-    financialStory += `Currently, your spending exceeds your earnings by ₦${Math.abs(profit).toLocaleString()}.`;
+    financialStory += tf(lang, 'story.spendingExceeds', Math.abs(profit).toLocaleString());
   }
 
   let productMsg = "";
   if (bestProduct && bestProduct.revenue > 0) {
-    productMsg = `${bestProduct.name} is your top seller right now (₦${bestProduct.revenue.toLocaleString()}).`;
+    productMsg = tf(lang, 'msg.topSeller', bestProduct.name, bestProduct.revenue.toLocaleString());
   }
 
   let stockMsg = "";
   if (finishedProducts.length > 0) {
-    stockMsg = `${finishedProducts.length} product(s) are completely finished.`;
+    stockMsg = tf(lang, 'msg.finished', finishedProducts.length);
   } else if (lowStockProducts.length > 0) {
-    stockMsg = `${lowStockProducts.length} product(s) are running low.`;
+    stockMsg = tf(lang, 'msg.low', lowStockProducts.length);
   } else if (products.length > 0) {
-    stockMsg = "Your stock levels are looking healthy.";
+    stockMsg = T('msg.stockHealthy');
   }
 
   return (
@@ -152,7 +156,7 @@ export default function DashboardView({
                   : 'bg-card border border-border text-muted-foreground hover:text-foreground hover:bg-surface'
               }`}
             >
-              {period === 'all' ? 'All Time' : period === 'today' ? 'Today' : period === 'custom' ? 'Custom' : `This ${period}`}
+              {period === 'all' ? T('period.all') : period === 'today' ? T('period.today') : period === 'custom' ? T('period.custom') : `This ${period.charAt(0).toUpperCase() + period.slice(1)}`}
             </button>
           );
         })}
@@ -160,14 +164,14 @@ export default function DashboardView({
 
       {timePeriod === 'custom' && (
         <div className="flex flex-wrap items-center gap-2 text-xs font-bold bg-card p-3 rounded-xl border border-border/60">
-          <span className="text-muted-foreground">From:</span>
+          <span className="text-muted-foreground">{T('dashboard.from')}</span>
           <input 
             type="date" 
             value={customStart} 
             onChange={(e) => setCustomStart(e.target.value)}
             className="bg-surface border border-border/60 rounded-xl px-3 py-2 text-foreground outline-none focus:border-amber-400 font-semibold"
           />
-          <span className="text-muted-foreground">To:</span>
+          <span className="text-muted-foreground">{T('dashboard.to')}</span>
           <input 
             type="date" 
             value={customEnd} 
@@ -184,7 +188,7 @@ export default function DashboardView({
         <div className="flex items-center gap-2 mb-2.5">
           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-bold bg-[#F5C518]/15 text-amber-500 border border-[#F5C518]/30">
             <span className="w-1.5 h-1.5 rounded-full bg-[#F5C518] animate-pulse" />
-            Business Summary
+            {T('dashboard.businessSummary')}
           </span>
         </div>
 
@@ -223,12 +227,12 @@ export default function DashboardView({
                 <DollarSign className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-emerald-400" />
               </div>
               <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 shrink-0 uppercase tracking-wider whitespace-nowrap">
-                Money In
+                {T('kpi.moneyIn')}
               </span>
             </div>
 
             <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">
-              Total Revenue
+              {T('kpi.totalRevenue')}
             </div>
 
             <div 
@@ -240,7 +244,7 @@ export default function DashboardView({
           </div>
 
           <div className="text-xs text-muted-foreground font-medium pt-2.5 mt-1.5 border-t border-border/40 leading-relaxed">
-            All customer cash collected
+            {T('kpi.totalRevenueDesc')}
           </div>
         </div>
 
@@ -252,12 +256,12 @@ export default function DashboardView({
                 <TrendingUp className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-amber-400" />
               </div>
               <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-400 shrink-0 uppercase tracking-wider whitespace-nowrap">
-                Mark-up
+                {T('kpi.markup')}
               </span>
             </div>
 
             <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">
-              Gross Profit
+              {T('analysis.grossProfit')}
             </div>
 
             <div 
@@ -269,7 +273,7 @@ export default function DashboardView({
           </div>
 
           <div className="text-xs text-muted-foreground font-medium pt-2.5 mt-1.5 border-t border-border/40 leading-relaxed">
-            Revenue minus cost of items sold
+            {T('kpi.grossProfitDesc')}
           </div>
         </div>
 
@@ -281,12 +285,12 @@ export default function DashboardView({
                 <TrendingDown className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-rose-400" />
               </div>
               <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-400 shrink-0 uppercase tracking-wider whitespace-nowrap">
-                Money Out
+                {T('kpi.moneyOut')}
               </span>
             </div>
 
             <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">
-              Operational Costs
+              {T('kpi.opCosts')}
             </div>
 
             <div 
@@ -298,7 +302,7 @@ export default function DashboardView({
           </div>
 
           <div className="text-xs text-muted-foreground font-medium pt-2.5 mt-1.5 border-t border-border/40 leading-relaxed">
-            Power, transit, rent & operations
+            {T('kpi.opCostsDesc')}
           </div>
         </div>
 
@@ -310,12 +314,12 @@ export default function DashboardView({
                 <Activity className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-emerald-400" />
               </div>
               <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 shrink-0 uppercase tracking-wider whitespace-nowrap">
-                Take-Home
+                {T('kpi.takeHome')}
               </span>
             </div>
 
             <div className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-1">
-              Net Profit
+              {T('kpi.netProfit')}
             </div>
 
             <div 
@@ -327,7 +331,7 @@ export default function DashboardView({
           </div>
 
           <div className="text-xs text-muted-foreground font-medium pt-2.5 mt-1.5 border-t border-border/40 leading-relaxed">
-            Gross profit minus expenses
+            {T('kpi.netProfitDesc')}
           </div>
         </div>
       </div>

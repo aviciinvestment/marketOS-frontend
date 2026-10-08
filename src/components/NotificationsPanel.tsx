@@ -2,6 +2,7 @@ import { useMemo, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, TrendingUp, AlertTriangle, PartyPopper, WifiOff, RefreshCw } from 'lucide-react';
 import { calculateFinancials, stockOf } from '../utils/finance';
+import { getStoredLang, t, tf, useAppLang, useAppT, type LanguageCode } from '../i18n';
 
 export interface AppNotification {
   id: string;
@@ -17,6 +18,7 @@ export function buildNotifications(
   products: any[],
   sales: any[],
   expenses: any[],
+  lang: LanguageCode = getStoredLang(),
 ): AppNotification[] {
   const notes: AppNotification[] = [];
   const now = new Date().toISOString();
@@ -30,8 +32,8 @@ export function buildNotifications(
       id: `profit-${stamp}`,
       type: 'success',
       icon: 'profit',
-      title: 'You are making money',
-      message: `After covering your goods and expenses you are ₦${netProfit.toLocaleString()} in profit. Keep it up!`,
+      title: t(lang, 'notif.makingMoney'),
+      message: tf(lang, 'notif.afterCosts', netProfit.toLocaleString()),
       time: now,
     });
   } else if (totalSales > 0 && grossProfit > 0 && netProfit <= 0) {
@@ -39,8 +41,8 @@ export function buildNotifications(
       id: `gross-profit-${stamp}`,
       type: 'info',
       icon: 'profit',
-      title: 'Sales are covering your goods',
-      message: `Your products earned ₦${grossProfit.toLocaleString()} in profit, but expenses are eating into it.`,
+      title: t(lang, 'notif.coveringGoods'),
+      message: tf(lang, 'notif.costsEating', grossProfit.toLocaleString()),
       time: now,
     });
   }
@@ -51,8 +53,8 @@ export function buildNotifications(
       id: `spending-${stamp}`,
       type: 'danger',
       icon: 'spending',
-      title: 'Spending too much',
-      message: `Your expenses (₦${totalExpenses.toLocaleString()}) have matched or passed everything you made (₦${totalSales.toLocaleString()}). Trim costs before you run dry.`,
+      title: t(lang, 'notif.spendingTooMuch'),
+      message: tf(lang, 'notif.spendingMatch', totalExpenses.toLocaleString(), totalSales.toLocaleString()),
       time: now,
     });
   } else if (totalExpenses > 0 && totalExpenses >= grossProfit) {
@@ -60,8 +62,8 @@ export function buildNotifications(
       id: `spending-profit-${stamp}`,
       type: 'warning',
       icon: 'spending',
-      title: 'Expenses are wiping out your profit',
-      message: `You spent ₦${totalExpenses.toLocaleString()} while your products only made ₦${grossProfit.toLocaleString()}. Watch your spending.`,
+      title: t(lang, 'notif.wipingProfit'),
+      message: tf(lang, 'notif.watchingSpend', totalExpenses.toLocaleString(), grossProfit.toLocaleString()),
       time: now,
     });
   }
@@ -74,8 +76,8 @@ export function buildNotifications(
         id: `break-even-${p.id}-${stamp}`,
         type: 'success',
         icon: 'break-even',
-        title: `${p.name} is fully paid back`,
-        message: `Every naira you spent on ${p.name} (₦${s.goodsCost.toLocaleString()}) has been recovered. It is now pure profit.`,
+        title: tf(lang, 'notif.paidBack', p.name),
+        message: tf(lang, 'notif.paidBackMsg', p.name, s.goodsCost.toLocaleString()),
         time: now,
       });
     } else if (s.moneyMade > 0 && s.fractionConsumed >= 0.5 && s.fractionConsumed < 1) {
@@ -83,8 +85,8 @@ export function buildNotifications(
         id: `halfway-${p.id}-${stamp}`,
         type: 'info',
         icon: 'break-even',
-        title: `${p.name} is halfway to breaking even`,
-        message: `You have recovered ${(s.fractionConsumed * 100).toFixed(0)}% of the ₦${s.goodsCost.toLocaleString()} it cost. Keep selling.`,
+        title: tf(lang, 'notif.halfway', p.name),
+        message: tf(lang, 'notif.halfwayMsg', (s.fractionConsumed * 100).toFixed(0), s.goodsCost.toLocaleString()),
         time: now,
       });
     }
@@ -111,7 +113,9 @@ export default function NotificationsPanel({
   onClose: () => void;
   onRetrySync: () => void;
 }) {
-  const notes = useMemo(() => buildNotifications(products, sales, expenses), [products, sales, expenses]);
+  const lang = useAppLang();
+  const T = useAppT();
+  const notes = useMemo(() => buildNotifications(products, sales, expenses, lang), [products, sales, expenses, lang]);
 
   const iconFor: Record<AppNotification['icon'], { el: ReactNode; cls: string }> = {
     profit: { el: <TrendingUp className="w-4 h-4" />, cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' },
@@ -140,8 +144,8 @@ export default function NotificationsPanel({
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-border/60">
               <div>
-                <h3 className="font-black text-lg text-foreground tracking-tight">Notifications</h3>
-                <p className="text-[11px] text-muted-foreground font-medium">Milestones, warnings & sync updates</p>
+                <h3 className="font-black text-lg text-foreground tracking-tight">{T('notif.title')}</h3>
+                <p className="text-[11px] text-muted-foreground font-medium">{T('notif.subtitle')}</p>
               </div>
               <button
                 onClick={onClose}
@@ -160,12 +164,12 @@ export default function NotificationsPanel({
                       <WifiOff className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-xs font-extrabold text-foreground">Another device has unsaved records</div>
+                      <div className="text-xs font-extrabold text-foreground">{T('notif.anotherDevice')}</div>
                       <div className="text-[11px] text-sky-400 font-medium mt-0.5 leading-relaxed">
                         {otherDevicePending.length > 1
-                          ? `${otherDevicePending.length} devices recorded data that hasn't synced yet.`
-                          : "A device recorded data that hasn't reached the cloud yet."}
-                        {' '}Go online on that device so everything appears here.
+                          ? tf(lang, 'notif.devicesPending', otherDevicePending.length)
+                          : T('notif.devicePending')}
+                        {' '}{T('notif.goOnline')}
                       </div>
                     </div>
                   </div>
@@ -174,7 +178,7 @@ export default function NotificationsPanel({
                     className="mt-3 inline-flex items-center gap-2 bg-sky-500 text-white px-4 py-2 rounded-full text-xs font-extrabold transition-colors hover:bg-sky-600"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
-                    Pull latest now
+                    {T('notif.pullLatest')}
                   </button>
                 </div>
               )}
@@ -184,9 +188,9 @@ export default function NotificationsPanel({
                   <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-surface border border-border/70 flex items-center justify-center">
                     <PartyPopper className="w-6 h-6 text-amber-400" />
                   </div>
-                  <div className="text-sm font-bold">All quiet for now</div>
+                  <div className="text-sm font-bold">{T('notif.quiet')}</div>
                   <div className="text-xs mt-1 px-6 leading-relaxed">
-                    You will get notified here when you reach break-even, start profiting, or spend too much.
+                    {T('notif.quietDesc')}
                   </div>
                 </div>
               ) : (

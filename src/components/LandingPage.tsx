@@ -15,9 +15,9 @@ import {
   Languages
 } from 'lucide-react';
 import BrandLogo from './BrandLogo';
+import { VoiceGuideButton } from './VoiceGuideButton';
 import { ADMIN_EMAIL } from '../config/api';
-
-export type LanguageCode = 'en' | 'pidgin' | 'igbo' | 'yoruba' | 'hausa';
+import { LANGUAGE_CODES, useAppLang, setAppLang, type LanguageCode } from '../i18n';
 
 interface LandingPageProps {
   currentUserEmail?: string;
@@ -30,6 +30,8 @@ interface LanguageContent {
   name: string;
   nativeName: string;
   flag: string;
+  notice: string;
+  navWhy: string;
   hero: {
     badge: string;
     title: string;
@@ -40,6 +42,14 @@ interface LanguageContent {
     trust1: string;
     trust2: string;
     trust3: string;
+  };
+  steps: {
+    tag: string;
+    title: string;
+    items: Array<{
+      title: string;
+      desc: string;
+    }>;
   };
   features: {
     tag: string;
@@ -69,6 +79,8 @@ const TRANSLATIONS: Record<LanguageCode, LanguageContent> = {
     name: 'English',
     nativeName: 'English',
     flag: '🇬🇧',
+    notice: 'Works Without Internet • No Monthly Fee • Your Money Stays Safe',
+    navWhy: 'Why Use It',
     hero: {
       badge: 'Built for Every Shop Owner, Market Trader & Retailer',
       title: 'Stop Guessing Your Real Gain. Know Every Naira Entering & Leaving',
@@ -79,6 +91,24 @@ const TRANSLATIONS: Record<LanguageCode, LanguageContent> = {
       trust1: 'Works Without Internet (Offline)',
       trust2: 'Capital Shield (Never Eat Capital)',
       trust3: 'Cartons into Pieces Calculation',
+    },
+    steps: {
+      tag: 'Made Simple',
+      title: 'Only 3 Things You Do',
+      items: [
+        {
+          title: 'Add Your Stock',
+          desc: 'When you buy goods, write the name and price once. That is all.',
+        },
+        {
+          title: 'Tap an Item When a Customer Buys',
+          desc: 'When someone buys, just tap the item. Your sale is recorded.',
+        },
+        {
+          title: 'See Your Real Profit Every Evening',
+          desc: 'marketOS shows what you sold, what still remains, and your exact profit.',
+        },
+      ],
     },
     features: {
       tag: 'Why Nigerian Merchants Choose MarketOS',
@@ -129,6 +159,8 @@ const TRANSLATIONS: Record<LanguageCode, LanguageContent> = {
     name: 'Pidgin',
     nativeName: 'Naija Pidgin',
     flag: '🇳🇬',
+    notice: 'E Dey Work Without Network • No Koko Fee • Your Money Dey Safe',
+    navWhy: 'Why You Go Like Am',
     hero: {
       badge: 'Dem Build Am For Every Trader, Shop Owner & Supermarket',
       title: 'Stop To Dey Guess Your Gain. Know Every Kobo Weh Enter & Comot',
@@ -139,6 +171,24 @@ const TRANSLATIONS: Record<LanguageCode, LanguageContent> = {
       trust1: 'E Dey Work Without Network',
       trust2: 'No Fit Chop Your Seed Capital',
       trust3: 'Break Down Carton into Pieces',
+    },
+    steps: {
+      tag: 'Dem Make Am Easy',
+      title: 'Just 3 Things You Go Do',
+      items: [
+        {
+          title: 'Add Your Goods',
+          desc: 'When you buy goods, write the name and price once. Na only that.',
+        },
+        {
+          title: 'Tap Am When Customer Buy',
+          desc: 'When customer buy, just tap the goods. Your sale don record.',
+        },
+        {
+          title: 'See Your Real Gain Every Evening',
+          desc: 'marketOS go show wetin you sell, wetin remain, and your exact gain.',
+        },
+      ],
     },
     features: {
       tag: 'Wetin Make Naija Traders Dey Choose MarketOS',
@@ -189,6 +239,8 @@ const TRANSLATIONS: Record<LanguageCode, LanguageContent> = {
     name: 'Igbo',
     nativeName: 'Asụsụ Igbo',
     flag: '🇳🇬',
+    notice: 'Ọ na-arụ ọrụ n’enweghị netwọk • Enweghị ụgwọ ọnwa • Ego gị dị nchebe',
+    navWhy: 'Ihe Mere I Ji Ejikwa Ya',
     hero: {
       badge: 'E mere ya maka ndị na-azụ ahịa, ndị nwe ụlọ ahịa na kanti',
       title: 'Kwụsị ịkọ nkọ uru ahịa gị. Mara ego niile na-abata ma na-apụ',
@@ -199,6 +251,24 @@ const TRANSLATIONS: Record<LanguageCode, LanguageContent> = {
       trust1: 'Ọ na-arụ ọrụ n’enweghị netwọk (Offline)',
       trust2: 'Chekwaa Ego Isi Ahịa (E rila jare)',
       trust3: 'Mgbakọ Katọn n’Otu n’Otu',
+    },
+    steps: {
+      tag: 'E Mere Ya Dị Mfe',
+      title: 'Naanị Ihe Atọ I Na-eme',
+      items: [
+        {
+          title: 'Tinye Ngwaahịa Gị',
+          desc: 'Mgbe ị zụrụ ngwaahịa, dee aha na ọnụahịa otu ugboro. Ọ bụ naanị nke ahụ.',
+        },
+        {
+          title: 'Pịa Ngwaahịa Mgbe Onye Ahịa Zụtara',
+          desc: 'Mgbe onye zụtara ihe, pịa naanị ngwaahịa ahụ. Edekọla ahịa gị.',
+        },
+        {
+          title: 'Hụ Ezigbo Uru Gị Kwa Mgbede',
+          desc: 'marketOS na-egosi ihe i ree, ihe fọdụrụ, na ezigbo uru gị.',
+        },
+      ],
     },
     features: {
       tag: 'Ihe Mere Ndị Ahịa Naijiria Ji Hụ MarketOS n’Anya',
@@ -249,6 +319,8 @@ const TRANSLATIONS: Record<LanguageCode, LanguageContent> = {
     name: 'Yoruba',
     nativeName: 'Èdè Yorùbá',
     flag: '🇳🇬',
+    notice: 'Ó ń ṣiṣẹ́ láìsí intanẹ́ẹ̀tì • Kò sí owó oṣù • Owó rẹ wà ní ààbò',
+    navWhy: 'Ìdí Tí O Fi Máa Lò Ó',
     hero: {
       badge: 'Fun gbogbo oníṣòwò, onílé-ìtajà àti ilé-ìtajà ńlá',
       title: 'Dẹkun láti máa ro èrè rẹ lásán. Mọ gbogbo owó tó ń wọlé àti èyí tó ń jáde',
@@ -259,6 +331,24 @@ const TRANSLATIONS: Record<LanguageCode, LanguageContent> = {
       trust1: 'Ó ń ṣiṣẹ́ láìsí intanẹ́ẹ̀tì (Offline)',
       trust2: 'Dáàbò Bo Owó Ìpìlẹ̀ (Má Jẹ Ìpìlẹ̀)',
       trust3: 'Ìṣirò Kátọ́ọ̀nù sí Ẹyọ Kọ̀ọ̀kan',
+    },
+    steps: {
+      tag: 'Ẹ Rọrùn Rẹ́',
+      title: 'Nǹkan Mẹ́ta Péré Tí O Máa Ṣe',
+      items: [
+        {
+          title: 'Fi Ọjà Rẹ Sílẹ̀',
+          desc: 'Nígbà tí o bá ra ọjà, kọ orúkọ àti owó rẹ lẹ́ẹ̀kan péré. Ìyẹn nìkan.',
+        },
+        {
+          title: 'Tẹ Ọjà Nígbà Tí Oníbàárà Bá Ra',
+          desc: 'Nígbà tí oníbàárà bá ra ọjà, tẹ ọjà náà péré. A ti kọ ọjà títà rẹ sílẹ̀.',
+        },
+        {
+          title: 'Wo Èrè Rẹ Ní Alẹ́ Kọ̀ọ̀kan',
+          desc: 'marketOS máa fi ohun tí o tà, ohun tó kù, àti èrè rẹ gangan hàn ọ́.',
+        },
+      ],
     },
     features: {
       tag: 'Ìdí Tí Àwọn Oníṣòwò Nàìjíríà Fi Yan MarketOS',
@@ -309,6 +399,8 @@ const TRANSLATIONS: Record<LanguageCode, LanguageContent> = {
     name: 'Hausa',
     nativeName: 'Harshen Hausa',
     flag: '🇳🇬',
+    notice: 'Yana Aiki Ba Intanet • Babu Kuɗin Wata • Kuɗinka Yana A Tsare',
+    navWhy: 'Dalilin Yin Amfani',
     hero: {
       badge: 'An ƙera don ƴan kasuwa, masu shaguna da manyan kanti',
       title: 'Daina ƙiyasi kan ainihin ribarka. San kowane naira da ke shiga da fita',
@@ -319,6 +411,24 @@ const TRANSLATIONS: Record<LanguageCode, LanguageContent> = {
       trust1: 'Yana Aiki Ba Intanet (Offline)',
       trust2: 'Kare Jarin Saye (Kada Ka Ci Jari)',
       trust3: 'Lissafin Katan zuwa Dai-ɗai',
+    },
+    steps: {
+      tag: 'An Sauƙaƙe Shi',
+      title: 'Abubuwa Uku Kaɗai ZaKa Yi',
+      items: [
+        {
+          title: 'Ƙara Kayanka',
+          desc: 'Idan ka sayi kaya, rubuta suna da farashi sau ɗaya kaɗai. Shi ke nan.',
+        },
+        {
+          title: 'Danna Kaya Idan Abokin Ciniki Ya Sayi',
+          desc: 'Idan abokin ciniki ya sayi, danna kayan kawai. An rubuta cinikinka.',
+        },
+        {
+          title: 'Duba Ainihin Ribarka Kowace Yamma',
+          desc: 'marketOS zai nuna abin da ka sayar, abin da ya rage, da ainihin ribarka.',
+        },
+      ],
     },
     features: {
       tag: 'Abin da Ya Sa Ƴan Kasuwar Najeriya Suka Zaɓi MarketOS',
@@ -367,22 +477,6 @@ const TRANSLATIONS: Record<LanguageCode, LanguageContent> = {
 };
 
 const FEATURE_ICONS = [WifiOff, DollarSign, Smartphone, Package, BarChart3, ShieldCheck];
-const FEATURE_TAGS = [
-  'OFFLINE FIRST',
-  'CAPITAL SHIELD',
-  'MULTI-DEVICE',
-  'PIECE BREAKDOWN',
-  'MASTER FILTER',
-  'BANK-GRADE PRIVACY'
-];
-const FEATURE_METRICS = [
-  '100% Offline Capability',
-  'Protects Supplier Funds',
-  'Live Cloud Concurrency',
-  'Instant Piece Profit',
-  'One-Tap Recalculation',
-  'NDPA 2023 Compliant'
-];
 
 export const LandingPage: React.FC<LandingPageProps> = ({
   currentUserEmail,
@@ -392,38 +486,22 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 }) => {
   const isFounder = currentUserEmail?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
-  // Selected Language State (persisted in localStorage)
-  const [currentLang, setCurrentLang] = useState<LanguageCode>(() => {
-    try {
-      const saved = localStorage.getItem('marketos_landing_lang');
-      if (saved && ['en', 'pidgin', 'igbo', 'yoruba', 'hausa'].includes(saved)) {
-        return saved as LanguageCode;
-      }
-    } catch {}
-    return 'en';
-  });
-
-  const handleLanguageChange = (lang: LanguageCode) => {
-    setCurrentLang(lang);
-    try {
-      localStorage.setItem('marketos_landing_lang', lang);
-    } catch {}
-  };
-
+  // Selected Language State (persisted globally, shared across the whole app)
+  const currentLang = useAppLang();
   const t = TRANSLATIONS[currentLang];
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[#07090E] text-slate-100 flex flex-col font-sans selection:bg-amber-400 selection:text-black">
+    <div className="min-h-screen bg-background text-foreground flex flex-col font-sans selection:bg-amber-400 selection:text-black pt-14 sm:pt-0">
       
       {/* TOP NOTIFICATION BAR */}
-      <div className="bg-gradient-to-r from-amber-600 via-yellow-500 to-amber-600 text-slate-950 px-4 py-2 text-center text-xs font-black tracking-wide flex items-center justify-center gap-2 shadow-inner">
-        <Sparkles size={14} className="animate-spin text-slate-950" style={{ animationDuration: '3s' }} />
-        <span>100% Offline-First • Multi-Device Concurrency • No Jargon • Zero Subscription Fees</span>
+      <div className="bg-gradient-to-r from-amber-600 via-yellow-500 to-amber-600 text-slate-950 px-4 py-2 text-center text-xs sm:text-sm font-black tracking-wide flex items-center justify-center gap-2 shadow-inner">
+        <Sparkles size={14} className="animate-spin text-slate-950 shrink-0" style={{ animationDuration: '3s' }} />
+        <span>{t.notice}</span>
       </div>
 
       {/* HEADER / NAVIGATION */}
-      <header className="sticky top-0 z-40 bg-[#07090E]/90 backdrop-blur-xl border-b border-slate-800/80 px-4 sm:px-8 py-3.5 transition-all">
+      <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-xl border-b border-border px-4 sm:px-8 py-3.5 transition-all">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
           
           {/* Logo */}
@@ -435,12 +513,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <nav className="hidden md:flex items-center gap-3">
             <a
               href="#features-section"
-              className="px-3.5 py-2 text-xs font-bold text-slate-300 hover:text-amber-400 transition-colors"
+              className="px-3.5 py-2 text-xs font-bold text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
             >
-              Why MarketOS
+              {t.navWhy}
             </a>
 
-            {isFounder && onOpenAdmin && (
+{isFounder && onOpenAdmin && (
               <button
                 onClick={onOpenAdmin}
                 className="px-3 py-2 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition-all flex items-center gap-1.5"
@@ -463,7 +541,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           <div className="md:hidden flex items-center gap-2">
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-200 hover:text-amber-400 hover:border-slate-700 transition-colors"
+              className="p-2 rounded-xl bg-surface border border-border text-foreground hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-500/40 transition-colors"
               aria-label="Toggle navigation menu"
             >
               {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
@@ -473,14 +551,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
         {/* Mobile Dropdown Menu Drawer */}
         {mobileMenuOpen && (
-          <div className="md:hidden bg-[#0A0D14]/98 backdrop-blur-2xl border-t border-slate-800/80 px-4 py-4 space-y-4 animate-in slide-in-from-top-2 duration-200 shadow-2xl">
+          <div className="md:hidden bg-card/95 backdrop-blur-2xl border-t border-border px-4 py-4 space-y-4 animate-in slide-in-from-top-2 duration-200 shadow-2xl">
             <div className="flex flex-col gap-2">
               <a
                 href="#features-section"
                 onClick={() => setMobileMenuOpen(false)}
-                className="block py-2 text-sm text-slate-200 hover:text-amber-400 font-semibold transition-colors"
+                className="block py-2 text-sm text-foreground hover:text-amber-600 dark:hover:text-amber-400 font-semibold transition-colors"
               >
-                Why MarketOS
+                {t.navWhy}
               </a>
             </div>
 
@@ -499,25 +577,25 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       </header>
 
       {/* LANGUAGE SELECTOR BAR - PLACED DIRECTLY BELOW THE NAV BAR */}
-      <div className="bg-[#0B0E17] border-b border-slate-800/80 px-4 sm:px-8 py-3 shadow-md">
+      <div className="bg-card border-b border-border px-4 sm:px-8 py-3 shadow-md">
         <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
-            <Languages size={15} className="text-amber-400 shrink-0" />
-            <span className="text-amber-400">Language / Èdè / Asụsụ / Harshe:</span>
+          <div className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+            <Languages size={15} className="text-amber-600 dark:text-amber-400 shrink-0" />
+            <span className="text-amber-600 dark:text-amber-400">Language / Èdè / Asụsụ / Harshe:</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-            {(['en', 'pidgin', 'igbo', 'yoruba', 'hausa'] as LanguageCode[]).map((langKey) => {
+            {LANGUAGE_CODES.map((langKey) => {
               const langObj = TRANSLATIONS[langKey];
               const isActive = currentLang === langKey;
               return (
                 <button
                   key={langKey}
-                  onClick={() => handleLanguageChange(langKey)}
+                  onClick={() => setAppLang(langKey)}
                   className={`px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shadow-sm ${
                     isActive 
                       ? 'bg-[#F5C518] text-black border-amber-300 shadow-amber-500/20 font-black scale-[1.02]' 
-                      : 'bg-slate-900/80 border-slate-700/80 text-slate-300 hover:text-white hover:border-amber-400/50 hover:bg-slate-800'
+                      : 'bg-surface border-border text-muted-foreground hover:text-foreground hover:border-amber-500/50'
                   }`}
                   title={`Switch language to ${langObj.name}`}
                 >
@@ -526,31 +604,34 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 </button>
               );
             })}
+
+            <span className="w-px h-6 bg-border/70 mx-1" />
+            <VoiceGuideButton page="landing" />
           </div>
         </div>
       </div>
 
       {/* HERO SECTION */}
-      <section className="relative px-4 sm:px-8 pt-12 sm:pt-20 pb-16 max-w-6xl mx-auto w-full text-center">
+      <section className="relative px-4 sm:px-8 pt-6 sm:pt-12 pb-16 max-w-6xl mx-auto w-full text-center">
         {/* Glow backdrop */}
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[350px] sm:w-[600px] h-[300px] bg-amber-500/10 blur-[120px] pointer-events-none rounded-full" />
 
         {/* Audience Pill Badge */}
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 border border-amber-500/30 text-amber-400 text-xs font-semibold mb-6 animate-pulse">
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-surface border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-semibold mb-6 animate-pulse">
           <Sparkles size={13} />
           <span>{t.hero.badge}</span>
         </div>
 
         {/* Hero Headline */}
-        <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-slate-100 tracking-tight leading-[1.18] max-w-4xl mx-auto">
+        <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-foreground tracking-tight leading-[1.18] max-w-4xl mx-auto">
           {t.hero.title}{' '}
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-amber-300 to-yellow-500">
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-600 via-amber-500 to-yellow-500 dark:from-amber-400 dark:via-amber-300 dark:to-yellow-500">
             {t.hero.titleHighlight}
           </span>
         </h1>
 
         {/* Hero Subtitle */}
-        <p className="mt-5 text-sm sm:text-lg text-slate-300 max-w-2xl mx-auto leading-relaxed">
+        <p className="mt-5 text-base sm:text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
           {t.hero.subtitle}
         </p>
 
@@ -558,23 +639,23 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3.5 sm:gap-4">
           <button
             onClick={onLaunchApp}
-            className="w-full sm:w-auto px-7 py-3.5 rounded-xl text-sm font-black bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 text-slate-950 shadow-xl shadow-amber-500/25 hover:shadow-amber-500/40 hover:scale-[1.02] active:scale-98 transition-all flex items-center justify-center gap-2"
+            className="w-full sm:w-auto px-8 py-4 rounded-xl text-base font-black bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 text-slate-950 shadow-xl shadow-amber-500/25 hover:shadow-amber-500/40 hover:scale-[1.02] active:scale-98 transition-all flex items-center justify-center gap-2"
           >
             <span>{t.hero.ctaPrimary}</span>
-            <ArrowRight size={16} />
+            <ArrowRight size={18} />
           </button>
 
           <a
             href="#features-section"
-            className="w-full sm:w-auto px-6 py-3.5 rounded-xl text-sm font-bold bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700/80 transition-all flex items-center justify-center gap-2 group"
+            className="w-full sm:w-auto px-6 py-3.5 rounded-xl text-sm font-bold bg-surface hover:bg-surface-hover text-foreground border border-border transition-all flex items-center justify-center gap-2 group"
           >
-            <Sparkles size={15} className="text-amber-400 group-hover:rotate-12 transition-transform" />
+            <Sparkles size={15} className="text-amber-600 dark:text-amber-400 group-hover:rotate-12 transition-transform" />
             <span>{t.hero.ctaSecondary}</span>
           </a>
         </div>
 
         {/* Quick Trust Badges */}
-        <div className="mt-12 pt-8 border-t border-slate-800/80 flex flex-wrap items-center justify-center gap-6 sm:gap-10 text-xs text-slate-300">
+        <div className="mt-12 pt-8 border-t border-border flex flex-wrap items-center justify-center gap-6 sm:gap-10 text-xs sm:text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <CheckCircle2 size={16} className="text-emerald-400" />
             <span className="font-semibold">{t.hero.trust1}</span>
@@ -593,74 +674,95 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       {/* WHY NIGERIAN MERCHANTS CHOOSE MARKETOS - STACKING CARDS ON MOBILE */}
       <section id="features-section" className="px-4 sm:px-8 py-16 sm:py-24 max-w-6xl mx-auto w-full">
         <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold uppercase tracking-widest mb-3">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-bold uppercase tracking-widest mb-3">
             <Sparkles size={13} />
             <span>{t.features.tag}</span>
           </div>
-          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-slate-100 tracking-tight">
+          <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-foreground tracking-tight">
             {t.features.title}
           </h2>
-          <p className="text-xs sm:text-sm text-slate-400 mt-3 max-w-xl mx-auto leading-relaxed">
+          <p className="text-xs sm:text-sm text-muted-foreground mt-3 max-w-xl mx-auto leading-relaxed">
             {t.features.subtitle}
           </p>
         </div>
 
-        {/* Mobile Animated Stacking Cards / Desktop 3-Column Grid */}
-        <div className="relative flex flex-col gap-6 md:grid md:grid-cols-3 md:gap-6">
+        {/* Animated Stacking Cards (Global) */}
+        <div className="relative flex flex-col gap-6 max-w-2xl mx-auto w-full pb-32">
           {t.features.items.map((item, index) => {
             const IconComponent = FEATURE_ICONS[index] || Sparkles;
             return (
               <div
                 key={index}
                 style={{
-                  top: `calc(4.5rem + ${index * 18}px)`,
+                  top: `calc(10rem + ${index * 20}px)`,
                   zIndex: 10 + index,
                 }}
-                className="sticky md:static p-6 sm:p-7 rounded-2xl sm:rounded-3xl bg-[#0D111A]/95 backdrop-blur-xl border border-slate-800 border-t-2 border-t-amber-400/90 md:border-t-slate-800 shadow-[0_-12px_35px_rgba(0,0,0,0.85)] md:shadow-lg hover:border-amber-500/50 transition-all duration-300 ease-out group will-change-transform"
+                className="sticky p-6 sm:p-8 rounded-2xl sm:rounded-3xl bg-card backdrop-blur-xl border border-border border-t-2 border-t-amber-500 dark:border-t-amber-400/90 shadow-[0_-12px_35px_rgba(0,0,0,0.12)] hover:border-amber-500/50 transition-all duration-300 ease-out group will-change-transform"
               >
-                {/* Header row of card: Icon, Badge, and Index */}
+                {/* Header row of card: Icon and number */}
                 <div className="flex items-center justify-between mb-4">
-                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner">
-                    <IconComponent size={22} />
+                  <div className="w-14 h-14 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 flex items-center justify-center group-hover:scale-110 transition-transform shadow-inner">
+                    <IconComponent size={24} />
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-mono font-extrabold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
-                      {FEATURE_TAGS[index]}
-                    </span>
-                    <span className="text-[11px] font-mono font-bold text-slate-400 bg-slate-900 px-2 py-0.5 rounded-md border border-slate-800">
-                      0{index + 1}
-                    </span>
-                  </div>
+                  <span className="text-2xl font-black text-amber-600/30 dark:text-amber-400/30">
+                    0{index + 1}
+                  </span>
                 </div>
 
                 {/* Card Title & Description */}
-                <h3 className="text-base sm:text-lg font-black text-slate-100 mb-2 group-hover:text-amber-400 transition-colors">
+                <h3 className="text-lg sm:text-xl font-black text-foreground mb-2 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
                   {item.title}
                 </h3>
-                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed min-h-[48px]">
+                <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
                   {item.desc}
                 </p>
-
-                {/* Footer metric & badge */}
-                <div className="mt-4 pt-3.5 border-t border-slate-800/80 flex items-center justify-between text-xs">
-                  <span className="text-amber-400/90 font-semibold text-[11px] sm:text-xs">
-                    {FEATURE_METRICS[index]}
-                  </span>
-                  <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
-                </div>
               </div>
             );
           })}
         </div>
       </section>
 
+      {/* HOW IT WORKS - JUST 3 SIMPLE STEPS */}
+      <section className="px-4 sm:px-8 py-16 sm:py-24 bg-surface/40 border-y border-border">
+        <div className="max-w-5xl mx-auto w-full">
+          <div className="text-center max-w-2xl mx-auto mb-12">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold uppercase tracking-widest mb-3">
+              <CheckCircle2 size={13} />
+              <span>{t.steps.tag}</span>
+            </div>
+            <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black text-foreground tracking-tight">
+              {t.steps.title}
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 max-w-4xl mx-auto">
+            {t.steps.items.map((step, index) => (
+              <div
+                key={index}
+                className="rounded-2xl sm:rounded-3xl bg-card border border-border p-6 text-center flex flex-col items-center gap-3 shadow-sm"
+              >
+                <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-500 to-amber-600 text-slate-950 text-xl font-black flex items-center justify-center shadow-lg shadow-amber-500/20">
+                  {index + 1}
+                </div>
+                <h3 className="text-base sm:text-lg font-black text-foreground">
+                  {step.title}
+                </h3>
+                <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                  {step.desc}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* BOTTOM CTA BANNER */}
-      <section className="px-4 sm:px-8 py-16 bg-gradient-to-r from-amber-500/10 via-amber-500/20 to-amber-500/10 border-t border-slate-800 text-center">
+      <section className="px-4 sm:px-8 py-16 bg-gradient-to-r from-amber-500/10 via-amber-500/20 to-amber-500/10 border-t border-border text-center">
         <div className="max-w-3xl mx-auto space-y-5">
-          <h2 className="text-2xl sm:text-4xl font-black text-slate-100">
+          <h2 className="text-2xl sm:text-4xl font-black text-foreground">
             {t.bottomCta.title}
           </h2>
-          <p className="text-xs sm:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed">
+          <p className="text-xs sm:text-base text-muted-foreground max-w-2xl mx-auto leading-relaxed">
             {t.bottomCta.subtitle}
           </p>
           <div className="pt-2">
@@ -675,10 +777,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       </section>
 
       {/* FOOTER */}
-      <footer className="mt-auto border-t border-slate-800 bg-[#05070B] px-5 sm:px-8 py-10 text-xs text-slate-400 flex flex-col md:flex-row items-center justify-between gap-6 md:gap-4 text-center md:text-left">
+      <footer className="mt-auto border-t border-border bg-card px-5 sm:px-8 py-10 text-xs text-muted-foreground flex flex-col md:flex-row items-center justify-between gap-6 md:gap-4 text-center md:text-left">
         <div className="flex flex-col sm:flex-row items-center gap-2.5 sm:gap-3">
           <BrandLogo size="sm" />
-          <span className="text-slate-400 font-semibold">{t.footer.tagline}</span>
+          <span className="text-muted-foreground font-semibold">{t.footer.tagline}</span>
         </div>
 
         {/* Links list */}
@@ -687,13 +789,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             <>
               <button
                 onClick={() => onOpenLegal('terms')}
-                className="hover:text-amber-400 transition-colors py-1 sm:py-0 w-full sm:w-auto font-medium"
+                className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors py-1 sm:py-0 w-full sm:w-auto font-medium"
               >
                 {t.footer.terms}
               </button>
               <button
                 onClick={() => onOpenLegal('privacy')}
-                className="hover:text-amber-400 transition-colors py-1 sm:py-0 w-full sm:w-auto font-medium"
+                className="hover:text-amber-600 dark:hover:text-amber-400 transition-colors py-1 sm:py-0 w-full sm:w-auto font-medium"
               >
                 {t.footer.privacy}
               </button>
@@ -702,12 +804,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
           {isFounder && onOpenAdmin && (
             <button
               onClick={onOpenAdmin}
-              className="text-amber-400 hover:underline font-bold py-1 sm:py-0 w-full sm:w-auto"
+              className="text-amber-600 dark:text-amber-400 hover:underline font-bold py-1 sm:py-0 w-full sm:w-auto"
             >
               {t.footer.admin}
             </button>
           )}
-          <span className="text-slate-500 pt-1 sm:pt-0">© {new Date().getFullYear()} marketOS. {t.footer.rights}</span>
+          <span className="text-muted-foreground/80 pt-1 sm:pt-0">© {new Date().getFullYear()} marketOS. {t.footer.rights}</span>
         </div>
       </footer>
     </div>

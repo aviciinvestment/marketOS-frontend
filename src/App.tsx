@@ -1,16 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { auth } from './firebase';
-import { 
-  Search, Bell, Plus, 
-  Home, 
+import {
+  Search, Bell, Plus,
+  Home,
   ChevronDown, Check, Moon, Sun,
   Package, ShoppingBag, Trash2,
   RefreshCw, Settings, LogOut, BarChart2,
   Camera, Upload, WifiOff, AlertTriangle,
   ShieldCheck, Compass,
   ChevronLeft, PanelLeftClose, PanelLeftOpen,
-  Menu, X, Edit2
+  Menu, X, Edit2, Volume2, VolumeX
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { API_ENDPOINTS, ADMIN_EMAIL, API_BASE_URL } from './config/api';
@@ -20,9 +20,7 @@ import SaleModal from './components/SaleModal';
 import EditSaleModal from './components/EditSaleModal';
 import ExpenseModal from './components/ExpenseModal';
 import ExpenseList from './components/ExpenseList';
-import DashboardView from './components/DashboardView';
-import InsightsView from './components/InsightsView';
-import ProductAnalysis from './components/ProductAnalysis';
+import MarketReport from './components/MarketReport';
 import NotificationsPanel, { buildNotifications } from './components/NotificationsPanel';
 import BrandLogo from './components/BrandLogo';
 import AlertDialog, { type AlertType } from './components/ui/AlertDialog';
@@ -30,6 +28,16 @@ import LegalModal from './components/LegalModal';
 import { AdminView } from './components/AdminView';
 import { LandingPage } from './components/LandingPage';
 import { SupportWidget } from './components/SupportWidget';
+import { VoiceGuideButton } from './components/VoiceGuideButton';
+import { useAppT, useAppLang, setAppLang, tf, LANGUAGE_CODES, LANGUAGE_META } from './i18n';
+import {
+  isVoiceGuideEnabled,
+  setVoiceGuideEnabled,
+  subscribeVoiceGuide,
+  cancelSpeech,
+  readPage,
+  type GuidePage,
+} from './voiceGuide';
 
 function GlassmorphicDropdown({ icon: Icon, options, selected, onSelect, placeholder }: any) {
   const [isOpen, setIsOpen] = useState(false);
@@ -85,6 +93,10 @@ function GlassmorphicDropdown({ icon: Icon, options, selected, onSelect, placeho
 }
 
 function App() {
+  // Global App Language (shared with the marketing landing page)
+  const T = useAppT();
+  const currentLang = useAppLang();
+
   // Persistent Theme Mode (Dark/Light)
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     try {
@@ -109,6 +121,7 @@ function App() {
   const [showLandingPage, setShowLandingPage] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [mobileHeaderMenuOpen, setMobileHeaderMenuOpen] = useState(false);
+  const [voiceGuideEnabled, setVoiceGuideEnabledState] = useState<boolean>(() => isVoiceGuideEnabled());
   const [user, setUser] = useState<any>(() => {
     try {
       const cached = localStorage.getItem('marketos_cached_auth_user');
@@ -122,6 +135,28 @@ function App() {
   });
 
   const isFounder = user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
+  // Keep the voice-guide state in sync when toggled from the header, settings or landing page
+  useEffect(() => {
+    return subscribeVoiceGuide(() => setVoiceGuideEnabledState(isVoiceGuideEnabled()));
+  }, []);
+
+  // Voice guide: read the current page out loud in the app language (auto on page entry)
+  useEffect(() => {
+    if (!voiceGuideEnabled) return;
+    let page: GuidePage | null = null;
+    if (showLandingPage) {
+      page = 'landing';
+    } else if (user) {
+      page = activeTab as GuidePage;
+    }
+    if (!page) return;
+    const handle = setTimeout(() => readPage(page, currentLang), 650);
+    return () => {
+      clearTimeout(handle);
+      cancelSpeech();
+    };
+  }, [activeTab, showLandingPage, user, voiceGuideEnabled, currentLang]);
 
   // Auth Forms
   const [email, setEmail] = useState('');
@@ -270,6 +305,7 @@ function App() {
   });
   const [imageUrlPromptOpen, setImageUrlPromptOpen] = useState(false);
   const [tempImageUrl, setTempImageUrl] = useState('');
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   const AVATAR_PRESETS = [
     { id: 'p1', name: 'Entrepreneur', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80' },
@@ -292,27 +328,57 @@ function App() {
     }
   }, [user]);
 
-  const handleAvatarFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        setAlertModal({
-          isOpen: true,
-          title: "Image File Too Large",
-          description: "Please select an image smaller than 2MB so your application loads smoothly.",
-          type: "warning"
-        });
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (reader.result) {
-          const res = reader.result.toString();
-          setAvatarUrl(res);
-        }
-      };
-      reader.readAsDataURL(file);
+    e.target.value = '';
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      setAlertModal({
+        isOpen: true,
+        title: "Image File Too Large",
+        description: "Please select an image smaller than 2MB so your application loads smoothly.",
+        type: "warning"
+      });
+      return;
     }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      if (!reader.result) return;
+      const dataUrl = reader.result.toString();
+      setIsUploadingAvatar(true);
+      try {
+        // Upload to Cloudinary through the backend so the API secret never
+        // leaves the server. The returned CDN url is saved as the avatar.
+        const res = await fetch(API_ENDPOINTS.uploadAvatar, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image: dataUrl,
+            userId: user?.uid || ''
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.url) {
+            setAvatarUrl(data.url);
+            localStorage.setItem('marketos_user_avatar', data.url);
+            return;
+          }
+        }
+        // Offline / server not configured / failed: keep the local image
+        // so the user can still see their new photo on this device.
+        setAvatarUrl(dataUrl);
+        localStorage.setItem('marketos_user_avatar', dataUrl);
+      } catch {
+        setAvatarUrl(dataUrl);
+        localStorage.setItem('marketos_user_avatar', dataUrl);
+      } finally {
+        setIsUploadingAvatar(false);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSaveProfile = async () => {
@@ -399,6 +465,17 @@ function App() {
       return 0;
     });
 
+  // Friendly single control for arranging stock (one choice instead of two)
+  const arrangeOptions = [
+    { id: 'name-asc', sortBy: 'name', order: 'asc' as const, label: T('stock.arrangeNameAZ') },
+    { id: 'name-desc', sortBy: 'name', order: 'desc' as const, label: T('stock.arrangeNameZA') },
+    { id: 'price-asc', sortBy: 'price', order: 'asc' as const, label: T('stock.arrangePriceLow') },
+    { id: 'price-desc', sortBy: 'price', order: 'desc' as const, label: T('stock.arrangePriceHigh') },
+    { id: 'stock-asc', sortBy: 'stock', order: 'asc' as const, label: T('stock.arrangeStockLow') },
+  ];
+  const arrangeById = (id: string) => arrangeOptions.find(o => o.id === id);
+  const currentArrange = arrangeById(`${productSortBy}-${productSortOrder}`) || arrangeOptions[0];
+
   // Sales Record State: loaded directly from per-user localStorage
   const [sales, setSales] = useState<any[]>(() => {
     try {
@@ -478,11 +555,11 @@ function App() {
       name: "", 
       category: "General", 
       purchasePrice: 0, 
-      quantityPurchased: 1, 
-      purchaseUnit: "Units", 
+      quantityPurchased: 0, 
+      purchaseUnit: "", 
       fractionConsumed: 0, 
       status: "Active",
-      sellingUnits: [{ id: Date.now().toString(), name: "Piece", yieldFromTotal: 1, price: 0 }]
+      sellingUnits: [{ id: Date.now().toString(), name: "", yieldFromTotal: 0, price: 0 }]
     });
     setIsProductModalOpen(true);
   };
@@ -1043,7 +1120,7 @@ function App() {
     }
 
     return (
-      <div className="min-h-screen bg-[#09090b] text-foreground flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden font-sans selection:bg-amber-400 selection:text-black">
+      <div className="min-h-screen bg-background text-foreground flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden font-sans selection:bg-amber-400 selection:text-black">
         {/* Subtle background ambient gold glow */}
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-[#F5C518]/10 rounded-full blur-[140px] pointer-events-none" />
 
@@ -1060,7 +1137,7 @@ function App() {
             className="mb-5 text-xs font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-amber-400/10 border border-amber-400/20 hover:bg-amber-400/20 transition-all shadow-sm"
           >
             <Compass className="w-3.5 h-3.5" />
-            <span>New to marketOS? Explore Product Tour & Guide</span>
+            <span>{T('auth.newHint')}</span>
           </button>
 
           <h1 className="text-2xl sm:text-3xl font-black text-foreground mb-1 text-center tracking-tight">
@@ -1096,7 +1173,7 @@ function App() {
             
             {isSignUp && (
               <div className="flex flex-col">
-                <label className="text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">Username</label>
+                <label className="text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">{T('auth.username')}</label>
                 <input 
                   type="text" 
                   value={username}
@@ -1109,7 +1186,7 @@ function App() {
             )}
 
             <div className="flex flex-col">
-              <label className="text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">Email</label>
+              <label className="text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">{T('auth.email')}</label>
               <input 
                 type="email" 
                 value={email}
@@ -1121,7 +1198,7 @@ function App() {
             </div>
 
             <div className="flex flex-col">
-              <label className="text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">Password</label>
+              <label className="text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">{T('auth.password')}</label>
               <input 
                 type="password" 
                 value={password}
@@ -1134,7 +1211,7 @@ function App() {
 
             {isSignUp && (
               <div className="flex flex-col">
-                <label className="text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">Confirm password</label>
+                <label className="text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">{T('auth.confirmPassword')}</label>
                 <input 
                   type="password" 
                   value={confirmPassword}
@@ -1193,7 +1270,7 @@ function App() {
 
             <div className="relative flex items-center justify-center my-2">
               <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border/50"></div></div>
-              <div className="relative bg-card px-3 text-[10px] text-muted-foreground uppercase tracking-widest font-extrabold">OR</div>
+              <div className="relative bg-card px-3 text-[10px] text-muted-foreground uppercase tracking-widest font-extrabold">{T('auth.or')}</div>
             </div>
 
             <button 
@@ -1229,7 +1306,7 @@ function App() {
               Privacy & Consent Policy
             </button>
             <span>•</span>
-            <span className="text-emerald-400 font-semibold">NDPA 2023 Compliant</span>
+            <span className="text-emerald-400 font-semibold">{T('auth.ndpa')}</span>
           </div>
         </div>
 
@@ -1361,7 +1438,7 @@ function App() {
             title="Home"
           >
             <Home className="w-5 h-5 shrink-0" />
-            {!isSidebarCollapsed && <span>Home</span>}
+            {!isSidebarCollapsed && <span>{T('nav.home')}</span>}
           </button>
           
           <button 
@@ -1374,7 +1451,7 @@ function App() {
             title="My Stock"
           >
             <Package className="w-5 h-5 shrink-0" />
-            {!isSidebarCollapsed && <span>My Stock</span>}
+            {!isSidebarCollapsed && <span>{T('nav.stock')}</span>}
           </button>
           
           <button 
@@ -1387,7 +1464,7 @@ function App() {
             title="Insights"
           >
             <BarChart2 className="w-5 h-5 shrink-0" />
-            {!isSidebarCollapsed && <span>Insights</span>}
+            {!isSidebarCollapsed && <span>{T('nav.insights')}</span>}
           </button>
           
           <button 
@@ -1400,7 +1477,7 @@ function App() {
             title="Settings"
           >
             <Settings className="w-5 h-5 shrink-0" />
-            {!isSidebarCollapsed && <span>Settings</span>}
+            {!isSidebarCollapsed && <span>{T('nav.settings')}</span>}
           </button>
 
           <button 
@@ -1413,7 +1490,7 @@ function App() {
             title="App Guide"
           >
             <Compass className="w-5 h-5 shrink-0" />
-            {!isSidebarCollapsed && <span>App Guide</span>}
+            {!isSidebarCollapsed && <span>{T('nav.guide')}</span>}
           </button>
 
           {isFounder && (
@@ -1428,7 +1505,7 @@ function App() {
             >
               <div className="flex items-center gap-3">
                 <ShieldCheck className="w-5 h-5 shrink-0" />
-                {!isSidebarCollapsed && <span>Mission Control</span>}
+                {!isSidebarCollapsed && <span>{T('nav.admin')}</span>}
               </div>
               {!isSidebarCollapsed && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono">
@@ -1450,7 +1527,7 @@ function App() {
           }`}
         >
           <Home className="w-5 h-5" />
-          <span className="text-[10px]">Home</span>
+          <span className="text-[10px]">{T('nav.home')}</span>
         </button>
 
         <button 
@@ -1460,7 +1537,7 @@ function App() {
           }`}
         >
           <Package className="w-5 h-5" />
-          <span className="text-[10px]">Stock</span>
+          <span className="text-[10px]">{T('nav.stock')}</span>
         </button>
 
         <button 
@@ -1470,7 +1547,7 @@ function App() {
           }`}
         >
           <BarChart2 className="w-5 h-5" />
-          <span className="text-[10px]">Insights</span>
+          <span className="text-[10px]">{T('nav.insights')}</span>
         </button>
       </nav>
 
@@ -1504,7 +1581,7 @@ function App() {
             <Search className="w-4 h-4 text-muted-foreground shrink-0" />
             <input 
               type="text" 
-              placeholder="Search my stock..." 
+              placeholder={T('search.placeholder')} 
               value={searchQuery} 
               onChange={(e) => setSearchQuery(e.target.value)} 
               className="bg-transparent border-none outline-none text-xs sm:text-sm w-full text-foreground placeholder:text-muted-foreground font-medium" 
@@ -1536,14 +1613,16 @@ function App() {
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : (dirty || syncError || !online) ? 'text-black/70' : ''}`} />
               <span>
                 {isSyncing 
-                  ? 'Saving...' 
-                  : (dirty || syncError || !online) 
-                    ? 'Save Online' 
-                    : 'Saved'}
+                    ? T('sync.saving') 
+                    : (dirty || syncError || !online) 
+                      ? T('sync.saveOnline') 
+                      : T('sync.saved')}
               </span>
               <span className={`w-1.5 h-1.5 rounded-full ${(dirty || syncError || !online) ? 'bg-black/50' : 'bg-emerald-400'}`} />
             </button>
             
+            <VoiceGuideButton page={(activeTab as GuidePage)} />
+
             <button 
               onClick={() => setIsDarkMode(!isDarkMode)} 
               className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-surface hover:bg-surface-hover border border-border/80 flex items-center justify-center transition-colors text-foreground"
@@ -1605,7 +1684,7 @@ function App() {
                 <Search className="w-4 h-4 text-amber-400 shrink-0" />
                 <input 
                   type="text" 
-                  placeholder="Search my stock..." 
+                  placeholder={T('search.placeholder')} 
                   value={searchQuery} 
                   onChange={(e) => setSearchQuery(e.target.value)} 
                   className="bg-transparent border-none outline-none text-xs sm:text-sm w-full text-foreground placeholder:text-muted-foreground font-medium" 
@@ -1627,10 +1706,10 @@ function App() {
                   <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${!online ? 'bg-rose-500' : (dirty || syncError) ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
                   <div className="min-w-0">
                     <p className="text-xs font-bold text-foreground truncate">
-                      {!online ? 'Offline Mode' : (dirty || syncError) ? 'Unsaved Changes' : 'Cloud Sync Active'}
+                      {!online ? T('status.offline') : (dirty || syncError) ? T('status.unsaved') : T('status.active')}
                     </p>
                     <p className="text-[10px] text-muted-foreground truncate">
-                      {lastSyncAt ? `Last saved ${new Date(lastSyncAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Local device storage active'}
+                      {lastSyncAt ? `Last saved ${new Date(lastSyncAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : T('status.localOnly')}
                     </p>
                   </div>
                 </div>
@@ -1649,10 +1728,10 @@ function App() {
                   <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : (dirty || syncError || !online) ? 'text-black/70' : ''}`} />
                   <span>
                     {isSyncing 
-                      ? 'Saving...' 
+                      ? T('sync.saving') 
                       : (dirty || syncError || !online) 
-                        ? 'Save Online' 
-                        : 'Saved'}
+                        ? T('sync.saveOnline') 
+                        : T('sync.saved')}
                   </span>
                   <span className={`w-1.5 h-1.5 rounded-full ${(dirty || syncError || !online) ? 'bg-black/50' : 'bg-emerald-400'}`} />
                 </button>
@@ -1670,7 +1749,7 @@ function App() {
                   }`}
                 >
                   <Settings className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span className="truncate">Settings</span>
+                  <span className="truncate">{T('nav.settings')}</span>
                 </button>
 
                 <button
@@ -1683,7 +1762,7 @@ function App() {
                   }`}
                 >
                   <Compass className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span className="truncate">App Guide</span>
+                  <span className="truncate">{T('nav.guide')}</span>
                 </button>
 
                 {isFounder && (
@@ -1719,13 +1798,13 @@ function App() {
                 <div className="min-w-0">
                   <div className="text-xs font-extrabold">
                     {!online 
-                      ? 'You are offline' 
+                      ? T('banner.offlineTitle') 
                       : syncError 
-                        ? 'Could not reach the cloud' 
-                        : 'Your records have not synced for a while'}
+                        ? T('banner.cloudTitle') 
+                        : T('banner.staleTitle')}
                   </div>
                   <div className="text-[11px] font-medium opacity-90 mt-0.5 leading-relaxed">
-                    Please go online so the records saved on this device get uploaded to your account.
+                    {T('banner.body')}
                   </div>
                 </div>
               </div>
@@ -1734,7 +1813,7 @@ function App() {
                 className="pill-button shrink-0 inline-flex items-center gap-2 bg-[#F5C518] text-black px-4 py-2 rounded-full text-xs font-extrabold transition-all shadow-md shadow-amber-500/20"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                {isSyncing ? 'Syncing...' : 'Retry Now'}
+                {isSyncing ? T('sync.syncing') : T('sync.retry')}
               </button>
             </div>
           </div>
@@ -1746,39 +1825,45 @@ function App() {
           
           {activeTab === 'home' && (
             <div className="flex flex-col gap-6 max-w-4xl mx-auto">
-              
-              {/* Quick Sell Register */}
-              <div className="bg-card -mx-3 sm:mx-0 w-[calc(100%+1.5rem)] sm:w-full rounded-none sm:rounded-2xl p-4 sm:p-6 border-y sm:border border-border/50 shadow-sm relative flex flex-col">
+
+              {/* Friendly Greeting so the page is easy to understand at a glance */}
+              <div className="pt-1 sm:pt-2 px-3 sm:px-0">
+                <h1 className="text-2xl sm:text-3xl font-black text-foreground tracking-tight">{T('title.home')}</h1>
+                <p className="text-sm text-muted-foreground mt-1">{T('home.greeting')}</p>
+              </div>
+
+              {/* Quick Sell Register - bright yellow so it stands out as the main action */}
+              <div className="bg-gradient-to-br from-[#FDE68A] via-[#FCD34D] to-[#FBBF24] -mx-3 sm:mx-0 w-[calc(100%+1.5rem)] sm:w-full rounded-none sm:rounded-2xl p-4 sm:p-6 border-y sm:border border-amber-400/70 shadow-lg shadow-amber-500/20 relative flex flex-col">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-extrabold text-foreground text-lg sm:text-xl tracking-tight">Quick Sell</h3>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#F5C518]/15 text-amber-500 border border-[#F5C518]/30 shrink-0">
-                        Tap to Record
+                      <h3 className="font-extrabold text-amber-950 text-lg sm:text-xl tracking-tight">{T('home.quickSell')}</h3>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-950/10 text-amber-950 border border-amber-900/20 shrink-0">
+                        {T('home.tapToRecord')}
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">Tap an item to record a customer sale</p>
+                    <p className="text-xs text-amber-900/80 mt-0.5">{T('home.quickSellSubtitle')}</p>
                   </div>
 
                   {products.length > 0 && (
-                    <div className="text-xs text-muted-foreground font-semibold">
-                      {products.length} {products.length === 1 ? 'item' : 'items'} in stock
+                    <div className="text-xs text-amber-900 font-bold">
+                      {products.length} {T(products.length === 1 ? 'home.itemInStock' : 'home.itemsInStock')}
                     </div>
                   )}
                 </div>
                 
                 {products.length === 0 ? (
-                  <div className="py-12 text-center text-xs text-muted-foreground bg-surface/40 rounded-xl border border-dashed border-border/50 flex flex-col items-center justify-center gap-3">
-                    <Package className="w-8 h-8 text-muted-foreground/60" />
+                  <div className="py-12 text-center text-xs text-amber-900 bg-white/70 rounded-xl border border-dashed border-amber-900/25 flex flex-col items-center justify-center gap-3">
+                    <Package className="w-8 h-8 text-amber-900/60" />
                     <div>
-                      <p className="font-bold text-foreground text-sm">No stock added yet</p>
-                      <p className="text-muted-foreground mt-0.5">Go to "My Stock" to add items first.</p>
+                      <p className="font-bold text-amber-950 text-sm">{T('home.noStock')}</p>
+                      <p className="text-amber-900/80 mt-0.5">{T('home.goToStock')}</p>
                     </div>
                     <button
                       onClick={() => setActiveTab('products')}
                       className="pill-button mt-1 px-4 py-2 bg-[#F5C518] text-black font-extrabold text-xs rounded-xl shadow-sm"
                     >
-                      Go to My Stock
+                      {T('home.goToStockBtn')}
                     </button>
                   </div>
                 ) : (
@@ -1790,24 +1875,24 @@ function App() {
                         <button
                           key={product.id}
                           onClick={() => handleSelectProduct(product)}
-                          className="pill-button bg-surface/60 hover:bg-surface border border-border/50 hover:border-amber-400/50 p-3 rounded-xl flex items-center justify-between gap-2.5 text-left transition-all group w-full shadow-sm min-w-0"
+                          className="pill-button bg-white/85 hover:bg-white border border-amber-900/10 hover:border-amber-900/30 p-4 rounded-2xl flex items-center justify-between gap-3 text-left transition-all group w-full shadow-sm min-w-0"
                         >
-                          <div className="flex items-center gap-2.5 flex-1 min-w-0 pr-1">
-                            <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
-                              <ShoppingBag className="w-4 h-4" />
+                          <div className="flex items-center gap-3 flex-1 min-w-0 pr-1">
+                            <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-900 border border-amber-900/20 flex items-center justify-center shrink-0">
+                              <ShoppingBag className="w-5 h-5" />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="text-xs sm:text-sm font-bold text-foreground leading-tight group-hover:text-amber-400 transition-colors truncate">
+                              <div className="text-sm sm:text-base font-extrabold text-amber-950 leading-tight group-hover:text-amber-800 transition-colors truncate">
                                 {product.name}
                               </div>
-                              <div className="text-[10px] text-muted-foreground font-semibold mt-0.5 truncate">
+                              <div className="text-xs text-amber-900/70 font-semibold mt-0.5 truncate">
                                 • {unitName}
                               </div>
                             </div>
                           </div>
                           
                           <div className="text-right shrink-0">
-                            <span className="text-xs font-black text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 whitespace-nowrap inline-block">
+                            <span className="text-base font-black text-amber-50 bg-amber-950 px-3 py-1.5 rounded-xl border border-amber-900/10 whitespace-nowrap inline-block">
                               ₦{displayPrice.toLocaleString()}
                             </span>
                           </div>
@@ -1833,9 +1918,9 @@ function App() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-extrabold text-foreground text-base sm:text-lg tracking-tight">Recent Quick Sells</h3>
+                      <h3 className="font-extrabold text-foreground text-base sm:text-lg tracking-tight">{T('home.recentQuickSells')}</h3>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">Edit or delete any sale record mistakenly inputted</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{T('home.recentQuickSellsSub')}</p>
                   </div>
                   {sales.length > 0 && (
                     <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
@@ -1846,7 +1931,7 @@ function App() {
 
                 {sales.length === 0 ? (
                   <div className="py-8 text-center text-xs text-muted-foreground bg-surface/30 rounded-xl border border-dashed border-border/50">
-                    No sales recorded yet. Tap any item above to record a customer sale.
+                    {T('home.noSalesYet')}
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2">
@@ -1861,7 +1946,7 @@ function App() {
                           </div>
                           <div className="min-w-0">
                             <div className="font-bold text-foreground text-xs sm:text-sm truncate flex flex-wrap items-center gap-1.5 sm:gap-2">
-                              <span>Sold {sale.productName || 'Product'}</span>
+                              <span>{tf(currentLang, 'sale.soldName', sale.productName || 'Product')}</span>
                               <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-surface border border-border/60 text-muted-foreground">
                                 {sale.quantitySold || 1} {sale.unitName || 'Unit'}
                               </span>
@@ -1869,18 +1954,18 @@ function App() {
                                 sale.updatedByDevice === deviceId ? (
                                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
                                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                                    This device
+                                    {T('sale.thisDevice')}
                                   </span>
                                 ) : (
                                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-sky-500/10 text-sky-400 border border-sky-500/20 flex items-center gap-1">
                                     <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
-                                    Another device
+                                    {T('sale.anotherDevice')}
                                   </span>
                                 )
                               ) : null}
                             </div>
                             <div className="text-[11px] text-muted-foreground mt-0.5">
-                              {sale.timestamp ? new Date(sale.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}
+                              {sale.timestamp ? new Date(sale.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : T('sale.recently')}
                               {sale.sellingPricePerUnit ? ` · ₦${sale.sellingPricePerUnit.toLocaleString()} each` : ''}
                             </div>
                           </div>
@@ -1910,7 +1995,7 @@ function App() {
                                 });
                               }}
                               className="p-1.5 rounded-lg text-muted-foreground hover:text-rose-400 hover:bg-surface border border-border/50 hover:border-rose-400/40 transition-colors"
-                              title="Delete Mistaken Sale"
+                              title={T('edit.deleteTitle')}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1938,42 +2023,40 @@ function App() {
             <div className="flex flex-col gap-6">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                  <h2 className="text-2xl font-black text-foreground tracking-tight">My Stock</h2>
-                  <p className="text-xs text-muted-foreground mt-0.5">Track what you bought, what you have left, and prices</p>
+                  <h2 className="text-2xl font-black text-foreground tracking-tight">{T('title.products')}</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {T('products.subtitle')}
+                    <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full bg-amber-400/10 text-amber-500 border border-amber-400/25 font-bold">
+                      {products.length} {T(products.length === 1 ? 'home.itemInStock' : 'home.itemsInStock')}
+                    </span>
+                  </p>
                 </div>
                 <button 
                   onClick={addProduct} 
                   className="pill-button bg-[#F5C518] hover:bg-[#EAB308] text-black font-extrabold py-3 px-6 rounded-xl transition-all shadow-lg shadow-amber-500/20 flex items-center gap-2 text-sm"
                 >
                   <Plus className="w-4 h-4" />
-                  Add New Item
+                  {T('products.add')}
                 </button>
               </div>
 
-              {/* Filters */}
+              {/* One simple arrange control */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-2">
-                <GlassmorphicDropdown
-                  placeholder="Sort By..."
-                  colorClass="bg-gradient-to-r from-amber-400 to-amber-500"
-                  options={[
-                    { id: 'name', name: 'Name' },
-                    { id: 'price', name: 'Price' },
-                    { id: 'stock', name: 'Stock' },
-                    { id: 'views', name: 'Views' },
-                  ]}
-                  selected={{ id: productSortBy, name: `Sort: ${productSortBy.charAt(0).toUpperCase() + productSortBy.slice(1)}` }}
-                  onSelect={(opt: any) => setProductSortBy(opt.id as any)}
-                />
-                <GlassmorphicDropdown
-                  placeholder="Order..."
-                  colorClass="bg-gradient-to-r from-amber-400 to-amber-500"
-                  options={[
-                    { id: 'asc', name: 'Ascending' },
-                    { id: 'desc', name: 'Descending' },
-                  ]}
-                  selected={{ id: productSortOrder, name: `Order: ${productSortOrder === 'asc' ? 'Ascending' : 'Descending'}` }}
-                  onSelect={(opt: any) => setProductSortOrder(opt.id as any)}
-                />
+                <div className="md:col-span-2 md:max-w-md">
+                  <GlassmorphicDropdown
+                    icon={Package}
+                    placeholder={T('stock.arrangeBy')}
+                    options={arrangeOptions.map(o => ({ id: o.id, name: o.label }))}
+                    selected={{ id: currentArrange.id, name: currentArrange.label }}
+                    onSelect={(opt: any) => {
+                      const chosen = arrangeById(opt.id);
+                      if (chosen) {
+                        setProductSortBy(chosen.sortBy as any);
+                        setProductSortOrder(chosen.order);
+                      }
+                    }}
+                  />
+                </div>
               </div>
 
               {/* Products Table */}
@@ -1982,6 +2065,7 @@ function App() {
                 sales={sales}
                 onEdit={startEdit} 
                 onDelete={deleteProduct} 
+                onAdd={addProduct}
               />
 
               {/* Add / Edit Product Modal */}
@@ -1997,13 +2081,12 @@ function App() {
         </div>
 
         {activeTab === 'insights' && (
-          <div className="px-3 sm:px-5 xl:px-8 py-2 flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-3 duration-300">
-            {/* 1. Business Summary & Financial KPIs */}
-            <DashboardView 
+          <div className="px-3 sm:px-5 xl:px-8 py-2 flex flex-col gap-6 max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-3 duration-300">
+            {/* One Simple Market Report */}
+            <MarketReport 
               sales={sales} 
               expenses={expenses} 
               products={products}
-              deviceId={deviceId}
               timePeriod={insightTimePeriod}
               setTimePeriod={setInsightTimePeriod}
               customStart={insightCustomStart}
@@ -2011,55 +2094,39 @@ function App() {
               customEnd={insightCustomEnd}
               setCustomEnd={setInsightCustomEnd}
             />
-
-            {/* 2. Product Profit & Cost Recovery Analysis */}
-            <ProductAnalysis products={products} sales={sales} onSell={handleSelectProduct} />
-
-            {/* 3. Business Expenses Manager */}
-            <ExpenseList 
-              expenses={expenses}
-              deviceId={deviceId}
-              onEdit={startEditExpense}
-              onDelete={handleDeleteExpense}
-              onAdd={() => { setEditingExpense(null); setIsExpenseModalOpen(true); }}
-            />
-
-            {/* 4. Deep Insights & Period Comparison (Driven by Unified Timeframe) */}
-            <InsightsView 
-              sales={sales} 
-              expenses={expenses} 
-              products={products}
-              timePeriod={insightTimePeriod}
-              customStart={insightCustomStart}
-              customEnd={insightCustomEnd}
-            />
           </div>
         )}
 
         {activeTab === 'settings' && (
           <div className="px-4 sm:px-8 py-2 max-w-2xl mx-auto space-y-6">
             <div>
-              <h2 className="text-2xl font-black text-foreground tracking-tight">Settings & Profile</h2>
-              <p className="text-xs text-muted-foreground mt-0.5">Customize your profile photo, business details and preferences</p>
+              <h2 className="text-2xl font-black text-foreground tracking-tight">{T('title.settings')}</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">{T('settings.subtitle')}</p>
             </div>
             
             {/* Profile Details & Photo Editor */}
             <div className="bg-card border border-border/80 rounded-2xl p-5 sm:p-7 shadow-sm space-y-6">
               <div>
-                <h3 className="text-base font-extrabold text-foreground tracking-tight mb-1">Store Owner Profile</h3>
-                <p className="text-xs text-muted-foreground">Update your photo and display name across marketOS</p>
+                <h3 className="text-base font-extrabold text-foreground tracking-tight mb-1">{T('settings.profileTitle')}</h3>
+                <p className="text-xs text-muted-foreground">{T('settings.profileDesc')}</p>
               </div>
 
               {/* Profile Picture Upload & Presets */}
               <div className="p-4 sm:p-5 rounded-xl bg-surface/40 border border-border/60 flex flex-col sm:flex-row items-center gap-5">
                 <div className="relative shrink-0 group">
-                  <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-amber-400/80 shadow-md">
+                  <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-amber-400/80 shadow-md relative">
                     <img src={avatarUrl} alt="Avatar Preview" className="w-full h-full object-cover" />
+                    {isUploadingAvatar && (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                        <RefreshCw className="w-5 h-5 text-white animate-spin" />
+                      </div>
+                    )}
                   </div>
                   <button 
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="absolute bottom-0 right-0 w-7 h-7 bg-[#F5C518] text-black rounded-full flex items-center justify-center shadow-lg border border-black/20 hover:scale-105 transition-transform"
+                    disabled={isUploadingAvatar}
+                    className="absolute bottom-0 right-0 w-7 h-7 bg-[#F5C518] text-black rounded-full flex items-center justify-center shadow-lg border border-black/20 hover:scale-105 transition-transform disabled:opacity-60"
                     title="Upload Photo"
                   >
                     <Camera className="w-3.5 h-3.5" />
@@ -2083,10 +2150,20 @@ function App() {
                     <button 
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="pill-button inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-surface hover:bg-surface-hover border border-border text-foreground text-xs font-bold transition-all shadow-sm"
+                      disabled={isUploadingAvatar}
+                      className="pill-button inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-surface hover:bg-surface-hover border border-border text-foreground text-xs font-bold transition-all shadow-sm disabled:opacity-60"
                     >
-                      <Upload className="w-3 h-3 text-amber-400" />
-                      Upload Photo
+                      {isUploadingAvatar ? (
+                        <>
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-3 h-3 text-amber-400" />
+                          Upload Photo
+                        </>
+                      )}
                     </button>
                     
                     <button 
@@ -2185,8 +2262,8 @@ function App() {
 
             {/* Appearance Settings */}
             <div className="bg-card border border-border/80 rounded-2xl p-5 sm:p-7 shadow-sm">
-              <h3 className="text-base font-extrabold mb-1 text-foreground tracking-tight">Appearance</h3>
-              <p className="text-xs text-muted-foreground mb-4">Choose your preferred application theme</p>
+              <h3 className="text-base font-extrabold mb-1 text-foreground tracking-tight">{T('settings.appearance')}</h3>
+              <p className="text-xs text-muted-foreground mb-4">{T('settings.themeDesc')}</p>
               
               <div className="grid grid-cols-2 gap-3">
                 <button
@@ -2199,7 +2276,7 @@ function App() {
                   }`}
                 >
                   <Sun className="w-4 h-4" />
-                  Light Mode
+                  {T('settings.lightMode')}
                 </button>
                 <button
                   type="button"
@@ -2211,11 +2288,74 @@ function App() {
                   }`}
                 >
                   <Moon className="w-4 h-4" />
-                  Dark Mode
+                  {T('settings.darkMode')}
                 </button>
               </div>
             </div>
 
+
+            {/* Language / Multi-Dialect Settings - applies across the whole app including the marketing page */}
+            <div className="bg-card border border-border/80 rounded-2xl p-5 sm:p-7 shadow-sm">
+              <h3 className="text-base font-extrabold mb-1 text-foreground tracking-tight">{T('settings.languageTitle')}</h3>
+              <p className="text-xs text-muted-foreground mb-4">{T('settings.languageDesc')}</p>
+              <div className="flex flex-wrap gap-2">
+                {LANGUAGE_CODES.map((langKey) => {
+                  const langObj = LANGUAGE_META[langKey];
+                  const isActive = currentLang === langKey;
+                  return (
+                    <button
+                      key={langKey}
+                      type="button"
+                      onClick={() => setAppLang(langKey)}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shadow-sm ${
+                        isActive
+                          ? 'bg-[#F5C518] text-black border-amber-300 font-black'
+                          : 'border-border/80 bg-surface text-muted-foreground hover:text-foreground hover:border-amber-500/50'
+                      }`}
+                    >
+                      <span>{langObj.flag}</span>
+                      <span>{langObj.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Voice Explanation Settings */}
+            <div className="bg-card border border-border/80 rounded-2xl p-5 sm:p-7 shadow-sm">
+              <div className="flex items-center gap-2 mb-1">
+                <Volume2 className="w-5 h-5 text-amber-400" />
+                <h3 className="text-base font-extrabold text-foreground tracking-tight">{T('voice.title')}</h3>
+              </div>
+              <p className="text-xs text-muted-foreground mb-4">{T('voice.desc')}</p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setVoiceGuideEnabled(true)}
+                  className={`p-4 rounded-xl border flex items-center justify-center gap-2.5 text-xs font-extrabold transition-all ${
+                    voiceGuideEnabled
+                      ? 'border-amber-400 bg-amber-400/10 text-amber-500 shadow-sm ring-1 ring-amber-400/30'
+                      : 'border-border/80 bg-surface text-muted-foreground hover:text-foreground hover:bg-surface-hover'
+                  }`}
+                >
+                  <Volume2 className="w-4 h-4" />
+                  {T('voice.on')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVoiceGuideEnabled(false)}
+                  className={`p-4 rounded-xl border flex items-center justify-center gap-2.5 text-xs font-extrabold transition-all ${
+                    !voiceGuideEnabled
+                      ? 'border-amber-400 bg-amber-400/10 text-amber-500 shadow-sm ring-1 ring-amber-400/30'
+                      : 'border-border/80 bg-surface text-muted-foreground hover:text-foreground hover:bg-surface-hover'
+                  }`}
+                >
+                  <VolumeX className="w-4 h-4" />
+                  {T('voice.off')}
+                </button>
+              </div>
+            </div>
 
             {/* Founder Admin Mission Control Shortcut */}
             {isFounder && (
@@ -2239,21 +2379,21 @@ function App() {
             )}
 
             <div className="bg-card border border-border/80 rounded-2xl p-5 sm:p-7 shadow-sm">
-              <h3 className="text-base font-extrabold mb-3 text-rose-400 tracking-tight">Danger Zone</h3>
+              <h3 className="text-base font-extrabold mb-3 text-rose-400 tracking-tight">{T('settings.dangerZone')}</h3>
               <div className="flex flex-col sm:flex-row gap-3">
                 <button 
                   onClick={clearAllData} 
                   className="pill-button flex-1 flex items-center justify-center gap-2 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500 hover:text-white text-rose-400 rounded-full px-5 py-3 font-bold text-xs sm:text-sm transition-all"
                 >
                   <Trash2 className="w-4 h-4" />
-                  Clear All Data
+                  {T('settings.clearAllData')}
                 </button>
                 <button 
                   onClick={handleLogout} 
                   className="pill-button flex-1 flex items-center justify-center gap-2 bg-surface hover:bg-surface-hover border border-border/80 text-foreground rounded-full px-5 py-3 font-bold text-xs sm:text-sm transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
-                  Sign Out
+                  {T('action.signout')}
                 </button>
               </div>
             </div>
@@ -2272,7 +2412,7 @@ function App() {
 
         {/* Logged-in App Guide View - Full-screen with floating bottom nav bar */}
         {(activeTab as any) === 'guide' && (
-          <div className="relative min-h-screen bg-[#07090E] pb-24">
+          <div className="relative min-h-screen bg-background pb-24">
             <LandingPage
               currentUserEmail={user?.email}
               onLaunchApp={() => setActiveTab('home')}
@@ -2314,11 +2454,11 @@ function App() {
 
         <AlertDialog
           isOpen={clearDataModalOpen}
-          title="Reset All Business Data?"
-          description="This will permanently delete all your products, sales history, and expense records. This action cannot be undone."
+          title={T('confirm.resetTitle')}
+          description={T('confirm.resetDesc')}
           type="danger"
-          confirmText="Yes, Clear Everything"
-          cancelText="Cancel"
+          confirmText={T('confirm.yesClear')}
+          cancelText={T('action.cancel')}
           onConfirm={executeClearAllData}
           onCancel={() => setClearDataModalOpen(false)}
         />
@@ -2328,18 +2468,18 @@ function App() {
           title={alertModal.title}
           description={alertModal.description}
           type={alertModal.type}
-          confirmText="Understood"
+          confirmText={T('confirm.understood')}
           isConfirmOnly={true}
           onConfirm={() => setAlertModal(prev => ({ ...prev, isOpen: false }))}
         />
 
         <AlertDialog
           isOpen={imageUrlPromptOpen}
-          title="Enter Image URL"
-          description="Paste a direct image URL (JPEG, PNG, WebP) to update your profile photo."
+          title={T('confirm.imageUrlTitle')}
+          description={T('confirm.imageUrlDesc')}
           type="info"
-          confirmText="Save Picture"
-          cancelText="Cancel"
+          confirmText={T('confirm.savePicture')}
+          cancelText={T('action.cancel')}
           promptInput={{
             value: tempImageUrl,
             placeholder: 'https://example.com/avatar.jpg',
@@ -2357,11 +2497,11 @@ function App() {
 
         <AlertDialog
           isOpen={!!deleteSaleConfirm}
-          title="Delete Sale Record"
-          description={`Are you sure you want to permanently delete this sale of ${deleteSaleConfirm?.name} (+₦${(deleteSaleConfirm?.amount || 0).toLocaleString()})? It will be removed across all devices.`}
+          title={T('edit.deleteTitle')}
+          description={tf(currentLang, 'confirm.deleteSaleDesc', deleteSaleConfirm?.name || 'Product', (deleteSaleConfirm?.amount || 0).toLocaleString())}
           type="danger"
-          confirmText="Yes, Delete Sale"
-          cancelText="Cancel"
+          confirmText={T('confirm.yesDeleteSale')}
+          cancelText={T('action.cancel')}
           onConfirm={() => {
             if (deleteSaleConfirm) {
               handleDeleteSale(deleteSaleConfirm.id);
@@ -2373,10 +2513,10 @@ function App() {
 
         <AlertDialog
           isOpen={!!saleUpdateNotice?.isOpen}
-          title="Sale Record Updated"
-          description={saleUpdateNotice?.message || "Your changes to this sale have been saved and synced across all your devices."}
+          title={T('confirm.saleUpdatedTitle')}
+          description={saleUpdateNotice?.message || T('confirm.saleUpdatedMsg')}
           type="success"
-          confirmText="Done"
+          confirmText={T('confirm.done')}
           isConfirmOnly={true}
           onConfirm={() => setSaleUpdateNotice(null)}
         />

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, X } from 'lucide-react';
 import type { BusinessExpense } from '../types';
+import { useAppT } from '../i18n';
 
 export default function ExpenseModal({ 
   isOpen, 
@@ -14,10 +15,12 @@ export default function ExpenseModal({
   onSave: (expense: BusinessExpense) => void;
   initialExpense?: BusinessExpense | null;
 }) {
-  const [category, setCategory] = useState('Rent');
+const [category, setCategory] = useState('Rent');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+
+  const T = useAppT();
 
   useEffect(() => {
     if (isOpen) {
@@ -67,13 +70,13 @@ export default function ExpenseModal({
           >
             <div className="flex justify-between items-start mb-6">
               <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-1 block">
-                  {initialExpense ? 'Update' : 'New Expense'}
+<span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-1 block">
+                  {initialExpense ? T('expense.update') : T('expense.newTitle')}
                 </span>
                 <h4 className="font-extrabold text-xl text-foreground tracking-tight">
-                  {initialExpense ? 'Edit Expense' : 'Record Money Spent'}
+                  {initialExpense ? T('expense.edit') : T('expense.newTitle')}
                 </h4>
-                <p className="text-xs text-muted-foreground mt-0.5">Separate from buying goods (transport, rent, fuel)</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{T('expense.separate')}</p>
               </div>
               <button 
                 onClick={onClose} 
@@ -85,8 +88,8 @@ export default function ExpenseModal({
             
             <div className="space-y-4">
               <div>
-                <label className="block text-[11px] font-bold text-muted-foreground mb-2 uppercase tracking-wider">
-                  Category
+<label className="block text-[11px] font-bold text-muted-foreground mb-2 uppercase tracking-wider">
+                  {T('expense.category')}
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {categories.map(c => {
@@ -110,8 +113,8 @@ export default function ExpenseModal({
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">
-                  How much did you spend?
+<label className="block text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">
+                  {T('expense.howMuch')}
                 </label>
                 <div className="relative w-full">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -128,8 +131,8 @@ export default function ExpenseModal({
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">
-                  Date
+<label className="block text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">
+                  {T('expense.date')}
                 </label>
                 <input 
                   type="date" 
@@ -140,14 +143,14 @@ export default function ExpenseModal({
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">
-                  Note / Reason (Optional)
+<label className="block text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">
+                  {T('expense.note')}
                 </label>
                 <input 
                   type="text" 
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="e.g. Paid okada for warehouse run"
+                  placeholder={T('expense.notePlaceholder')}
                   className="w-full bg-surface border border-border/50 rounded-xl px-4 py-3 text-foreground focus:outline-none focus:border-amber-400 text-sm transition-colors"
                 />
               </div>
@@ -158,8 +161,8 @@ export default function ExpenseModal({
               disabled={!amount || parseFloat(amount) <= 0}
               className="pill-button w-full text-base font-extrabold py-4 rounded-full transition-all shadow-xl shadow-amber-500/15 mt-7 flex items-center justify-center gap-2 bg-[#F5C518] hover:bg-[#EAB308] text-black disabled:opacity-50"
             >
-              <Check className="w-5 h-5" />
-              {initialExpense ? 'Update Expense' : 'Save Expense'}
+<Check className="w-5 h-5" />
+              {initialExpense ? T('expense.updateExpense') : T('expense.save')}
             </button>
           </motion.div>
         </div>

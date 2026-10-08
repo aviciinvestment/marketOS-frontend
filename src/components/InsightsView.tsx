@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { BarChart2, TrendingUp, Activity } from 'lucide-react';
 import { calculateFinancials, saleRevenue, stockOf } from '../utils/finance';
+import { useAppT, useAppLang, tf } from '../i18n';
 
 export type TimePeriodType = 'today' | 'week' | 'month' | 'year' | 'all' | 'custom';
 
@@ -19,6 +20,8 @@ export default function InsightsView({
   customEnd?: string;
 }) {
   const now = new Date();
+  const T = useAppT();
+  const lang = useAppLang();
 
   // Helper to filter sales/expenses by period
   const filterData = (items: any[], period: string, start?: Date, end?: Date) => {
@@ -136,40 +139,40 @@ export default function InsightsView({
 
   // 1. Business Growth Insight
   if (currentSales.length === 0 && previousSales.length === 0) {
-    insights.push(<p>You haven't recorded any sales yet for <b>{periodLabel.toLowerCase()}</b>. Start recording sales to see insights.</p>);
+    insights.push(<p>{tf(lang, 'narrative.noneYet', periodLabel.toLowerCase())}</p>);
   } else if (previousSales.length === 0 || timePeriod === 'all') {
-    insights.push(<p>For <b>{periodLabel.toLowerCase()}</b>, you recorded <b>₦{currentGrossProfit.toLocaleString()}</b> in gross profit from <b>₦{currentRevenue.toLocaleString()}</b> in total sales.</p>);
+    insights.push(<p>{tf(lang, 'narrative.summary', periodLabel.toLowerCase(), currentGrossProfit.toLocaleString(), currentRevenue.toLocaleString())}</p>);
   } else {
     // Compare periods
     const revDiff = currentRevenue - prevRevenue;
     const profitDiff = currentGrossProfit - prevGrossProfit;
     
     if (revDiff > 0 && profitDiff > 0) {
-      insights.push(<p>Your business is growing. Your sales increased by <b>₦{revDiff.toLocaleString()}</b>, and your gross profit also went up by <b>₦{profitDiff.toLocaleString()}</b> compared to the previous period.</p>);
+      insights.push(<p>{tf(lang, 'narrative.growing', revDiff.toLocaleString(), profitDiff.toLocaleString())}</p>);
     } else if (revDiff > 0 && profitDiff <= 0) {
-      insights.push(<p>Your sales increased, but your gross profit did not. You sold more, but the items you sold had lower profit margins than before.</p>);
+      insights.push(<p>{T('narrative.salesUp')}</p>);
     } else if (revDiff < 0 && profitDiff < 0) {
-      insights.push(<p>Your sales and gross profit are lower than the previous period. You made <b>₦{Math.abs(revDiff).toLocaleString()}</b> less in revenue.</p>);
+      insights.push(<p>{tf(lang, 'narrative.down', Math.abs(revDiff).toLocaleString())}</p>);
     } else if (revDiff < 0 && profitDiff >= 0) {
-      insights.push(<p>You made fewer sales, but your gross profit actually went up! This means you sold items with much better profit margins.</p>);
+      insights.push(<p>{T('narrative.fewerBetter')}</p>);
     } else {
-      insights.push(<p>Your business performance remained roughly the same as the previous period.</p>);
+      insights.push(<p>{T('narrative.flat')}</p>);
     }
   }
 
   // 2. Product Level Insights
   if (mostProfitProduct) {
-    insights.push(<p><b>{mostProfitProduct.name}</b> generated the most gross profit (₦{mostProfitProduct.profit.toLocaleString()}).</p>);
+    insights.push(<p>{tf(lang, 'narrative.mostProfit', mostProfitProduct.name, mostProfitProduct.profit.toLocaleString())}</p>);
   }
   if (highestQtyProduct && highestQtyProduct.id !== mostProfitProduct?.id) {
-    insights.push(<p><b>{highestQtyProduct.name}</b> was your most popular item by volume, selling {highestQtyProduct.qty} units.</p>);
+    insights.push(<p>{tf(lang, 'narrative.popular', highestQtyProduct.name, highestQtyProduct.qty)}</p>);
   }
   
   if (highSalesLowProfit.length > 0) {
     const h = highSalesLowProfit[0];
     insights.push(
       <p className="text-orange-600 dark:text-orange-400">
-        You are selling a lot of <b>{h.name}</b>, but you haven't earned back what it cost you yet — <b>₦{h.rev.toLocaleString()}</b> made of the <b>₦{h.cost.toLocaleString()}</b> spent ({h.breakEvenPct.toFixed(0)}% recovered). Keep selling to break even.
+        {tf(lang, 'narrative.highSalesLowProfit', h.name, h.rev.toLocaleString(), h.cost.toLocaleString(), h.breakEvenPct.toFixed(0))}
       </p>
     );
   }
@@ -177,15 +180,18 @@ export default function InsightsView({
   if (notSelling.length > 0 && currentSales.length > 0) {
     insights.push(
       <p className="text-muted-foreground">
-        {notSelling.length} product(s) did not sell at all during this period, including <b>{notSelling[0].name}</b>.
+        {tf(lang, 'narrative.notSelling', notSelling.length, notSelling[0].name)}
       </p>
     );
   }
 
   if (runningLow.length > 0) {
+    const leadName = runningLow.length > 1
+      ? tf(lang, 'narrative.runningLowOther', runningLow[0].name, runningLow.length - 1)
+      : runningLow[0].name;
     insights.push(
       <p className="text-red-500">
-        <b>{runningLow[0].name}</b> {runningLow.length > 1 ? `and ${runningLow.length - 1} other product(s)` : ''} are running low on stock. Restock soon so you don't miss out on sales!
+        {tf(lang, 'narrative.runningLow', leadName)}
       </p>
     );
   }
@@ -199,12 +205,12 @@ export default function InsightsView({
         <div className="flex items-center gap-2 mb-4">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-[#F5C518]/15 text-amber-500 border border-[#F5C518]/30">
             <BarChart2 className="w-3.5 h-3.5" />
-            Performance Intel
+            {T('insights.performanceBadge')}
           </span>
         </div>
 
         <h2 className="text-xl sm:text-2xl font-black text-foreground mb-6 tracking-tight">
-          Executive Insights
+          {T('insights.executive')}
         </h2>
         
         <div className="flex flex-col gap-3">
@@ -227,7 +233,7 @@ export default function InsightsView({
           <div className="bg-card rounded-2xl p-5 sm:p-6 border border-border/50 shadow-sm min-w-0">
             <h3 className="font-extrabold text-base sm:text-lg text-foreground mb-4 flex items-center gap-2 tracking-tight">
               <TrendingUp className="w-5 h-5 text-emerald-400" />
-              Most Profitable Products
+              {T('insights.mostProfitable')}
             </h3>
             <div className="flex flex-col gap-3">
               {byProfit.filter(p => p.profit > 0).slice(0, 4).map(product => {
@@ -252,7 +258,7 @@ export default function InsightsView({
           <div className="bg-card rounded-2xl p-5 sm:p-6 border border-border/50 shadow-sm min-w-0">
             <h3 className="font-extrabold text-base sm:text-lg text-foreground mb-4 flex items-center gap-2 tracking-tight">
               <Activity className="w-5 h-5 text-amber-400" />
-              Highest Revenue Products
+              {T('insights.highestRevenue')}
             </h3>
             <div className="flex flex-col gap-3">
               {byRevenue.filter(p => p.rev > 0).slice(0, 4).map(product => {

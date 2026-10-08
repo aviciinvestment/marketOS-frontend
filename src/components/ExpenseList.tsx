@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { TrendingDown, Edit2, Trash2, Plus } from 'lucide-react';
 import type { BusinessExpense } from '../types';
 import AlertDialog from './ui/AlertDialog';
+import { useAppT, useAppLang, tf } from '../i18n';
 
 export default function ExpenseList({ 
   expenses,
@@ -17,18 +18,20 @@ export default function ExpenseList({
   onAdd?: () => void;
 }) {
   const [expenseToDelete, setExpenseToDelete] = useState<BusinessExpense | null>(null);
+  const T = useAppT();
+  const lang = useAppLang();
 
   return (
     <div className="bg-card -mx-3 sm:mx-0 w-[calc(100%+1.5rem)] sm:w-full rounded-none sm:rounded-2xl p-4 sm:p-6 border-y sm:border border-border/50 shadow-sm flex flex-col">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="font-extrabold text-foreground text-base sm:text-lg tracking-tight">Business Expenses</h3>
+            <h3 className="font-extrabold text-foreground text-base sm:text-lg tracking-tight">{T('expense.title')}</h3>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
-              Costs & Overheads
+              {T('expense.badge')}
             </span>
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5">Track transportation, power, feeding, and operational costs</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{T('expense.subtitle')}</p>
         </div>
 
         <div className="flex items-center gap-2 self-start sm:self-auto">
@@ -43,7 +46,7 @@ export default function ExpenseList({
               className="pill-button flex items-center justify-center gap-1.5 bg-[#F5C518] hover:bg-[#EAB308] text-black px-3.5 sm:px-4 py-2 rounded-xl text-xs font-extrabold transition-all shadow-md shadow-amber-500/15 active:scale-95"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Record Money Spent</span>
+              <span>{T('expense.record')}</span>
             </button>
           )}
         </div>
@@ -52,14 +55,14 @@ export default function ExpenseList({
       {expenses.length === 0 ? (
         <div className="py-8 text-center text-xs text-muted-foreground bg-surface/30 rounded-xl border border-dashed border-border/50 flex flex-col items-center justify-center gap-2">
           <TrendingDown className="w-7 h-7 text-muted-foreground/40" />
-          <p className="font-semibold text-foreground/80">No business expenses recorded yet.</p>
-          <p className="text-muted-foreground">Log expenses like transportation, feeding, generator fuel, or shop rent.</p>
+          <p className="font-semibold text-foreground/80">{T('expense.emptyTitle')}</p>
+          <p className="text-muted-foreground">{T('expense.emptyDesc')}</p>
           {onAdd && (
             <button
               onClick={onAdd}
               className="mt-1 px-3.5 py-1.5 bg-surface hover:bg-surface-hover border border-amber-400/40 text-amber-400 font-extrabold text-xs rounded-lg transition-colors"
             >
-              + Record Expense
+              + {T('expense.record')}
             </button>
           )}
         </div>
@@ -111,14 +114,14 @@ export default function ExpenseList({
                   <button 
                     onClick={() => onEdit(expense)} 
                     className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-surface hover:bg-surface-hover border border-border text-muted-foreground hover:text-foreground flex items-center justify-center transition-colors" 
-                    title="Edit expense"
+                    title={T('expense.editTooltip')}
                   >
                     <Edit2 className="w-3.5 h-3.5" />
                   </button>
                   <button 
                     onClick={() => setExpenseToDelete(expense)} 
                     className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-rose-500/10 hover:bg-rose-500 hover:text-white border border-rose-500/20 text-rose-400 flex items-center justify-center transition-colors" 
-                    title="Delete expense"
+                    title={T('expense.deleteTooltip')}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -132,15 +135,15 @@ export default function ExpenseList({
       {/* Delete Confirmation Modal */}
       <AlertDialog
         isOpen={!!expenseToDelete}
-        title="Delete Business Expense?"
+        title={T('expense.deleteTitle')}
         description={
           expenseToDelete 
-            ? `Are you sure you want to delete this expense of ₦${(expenseToDelete.amount || 0).toLocaleString()} (${expenseToDelete.category})? This will be permanently removed and synced across all your devices.`
-            : 'Are you sure you want to delete this expense record?'
+            ? tf(lang, 'expense.deleteDesc', (expenseToDelete.amount || 0).toLocaleString(), expenseToDelete.category || '')
+            : T('expense.deleteDescFallback')
         }
         type="danger"
-        confirmText="Yes, Delete Expense"
-        cancelText="Cancel"
+        confirmText={T('expense.yesDelete')}
+        cancelText={T('action.cancel')}
         onConfirm={() => {
           if (expenseToDelete) {
             onDelete(expenseToDelete.id);

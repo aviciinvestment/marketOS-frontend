@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Package, RefreshCw } from 'lucide-react';
+import { Check, Minus, Package, Plus, RefreshCw } from 'lucide-react';
+import { useAppT, useAppLang, tf } from '../i18n';
 
 
 export default function SaleModal({ 
@@ -21,6 +22,9 @@ export default function SaleModal({
   const [price, setPrice] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  const T = useAppT();
+  const lang = useAppLang();
 
   useEffect(() => {
     if (isOpen && product) {
@@ -115,28 +119,28 @@ export default function SaleModal({
               <div className="w-16 h-16 bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-5">
                 <Check className="w-8 h-8" />
               </div>
-              <h3 className="text-2xl font-black text-foreground mb-1.5 tracking-tight">Sale Recorded!</h3>
-              <p className="text-muted-foreground text-xs mb-6">Stock and financials updated immediately.</p>
+              <h3 className="text-2xl font-black text-foreground mb-1.5 tracking-tight">{T('sale.recorded')}</h3>
+              <p className="text-muted-foreground text-xs mb-6">{T('sale.recordedDesc')}</p>
               
               <div className="bg-surface/70 rounded-xl p-5 text-left space-y-3.5 mb-7 border border-border/40">
                 <div className="flex justify-between items-center border-b border-border/50 pb-3">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Money Received</span>
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{T('sale.moneyReceived')}</span>
                   <span className="text-xl font-black text-foreground">₦{revenue.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between items-center border-b border-border/50 pb-3">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Quantity Sold</span>
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{T('sale.quantitySold')}</span>
                   <span className="font-bold text-foreground text-sm">{qtyNum} {activeUnit.name}{qtyNum > 1 ? 's' : ''}</span>
                 </div>
                 <div className="flex justify-between items-center border-b border-border/50 pb-3">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Profit so far on {product.name}</span>
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{tf(lang, 'sale.profitOn', product.name)}</span>
                   <span className={`font-bold text-sm ${runningProfit < 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
                     ₦{runningProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </span>
                 </div>
                 <div className="flex justify-between items-center pt-1">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Remaining Stock</span>
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{T('sale.remainingStock')}</span>
                   <span className="font-bold text-foreground text-sm">
-                    {remainingQty.toLocaleString(undefined, { maximumFractionDigits: 2 })} {product.purchaseUnit || 'units'} left
+                    {tf(lang, 'sale.left', `${remainingQty.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${product.purchaseUnit || 'units'}`)}
                   </span>
                 </div>
               </div>
@@ -145,14 +149,14 @@ export default function SaleModal({
                 onClick={handleClose}
                 className="pill-button w-full bg-white hover:bg-zinc-200 text-black font-extrabold py-4 rounded-full transition-all shadow-lg text-base"
               >
-                Done
+                {T('sale.done')}
               </button>
             </div>
           ) : (
             <>
               <div className="flex justify-between items-start mb-6">
                 <div>
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-1 block">New Sale</span>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-1 block">{T('sale.new')}</span>
                   <h4 className="font-extrabold text-xl text-foreground tracking-tight">{product.name}</h4>
                 </div>
                 <div className="w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
@@ -163,7 +167,7 @@ export default function SaleModal({
               <div className="space-y-6">
                 {!isOldProduct && (
                   <div>
-                    <label className="block text-[11px] font-bold text-muted-foreground mb-3 uppercase tracking-wider">Select Unit Sold</label>
+                    <label className="block text-[11px] font-bold text-muted-foreground mb-3 uppercase tracking-wider">{T('sale.selectUnit')}</label>
                     <div className="grid grid-cols-2 gap-2.5">
                       {product.sellingUnits.map((unit: any) => (
                         <button
@@ -184,7 +188,7 @@ export default function SaleModal({
                 )}
 
                 <div>
-                  <label className="block text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">Selling Price</label>
+                  <label className="block text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">{T('sale.sellingPrice')}</label>
                   <div className="flex items-center bg-surface/50 rounded-xl border border-border/50 overflow-hidden focus-within:border-amber-400 transition-colors">
                     <span className="pl-4 py-3 text-xs font-extrabold text-muted-foreground">₦</span>
                     <input 
@@ -198,40 +202,40 @@ export default function SaleModal({
                   </div>
                   {price !== '' && Number(price) > 0 && (
                     <p className="text-[10px] text-amber-400 font-bold mt-1.5">
-                      Custom price — {unitPrice > 0 ? `unit price is ₦${unitPrice.toLocaleString()}` : ''}
+                      {tf(lang, 'sale.customPrice', unitPrice > 0 ? unitPrice.toLocaleString() : '')}
                     </p>
                   )}
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-muted-foreground mb-3 uppercase tracking-wider">Quantity</label>
+                  <label className="block text-[11px] font-bold text-muted-foreground mb-3 uppercase tracking-wider">{T('sale.quantity')}</label>
                   <div className="flex items-center gap-3 bg-surface/50 p-2 rounded-xl border border-border/50">
                     <button 
                       onClick={() => setQuantity(Math.max(1, qtyNum - 1).toString())}
-                      className="w-12 h-12 rounded-lg bg-card border border-border flex items-center justify-center text-xl font-bold hover:bg-surface transition-colors text-foreground shadow-sm"
-                    >-</button>
+                      className="w-12 h-12 shrink-0 rounded-lg bg-card border border-border flex items-center justify-center hover:bg-surface transition-colors text-foreground shadow-sm"
+                    ><Minus className="w-5 h-5" /></button>
                     <input 
                       type="number" 
                       value={quantity}
                       onChange={(e) => setQuantity(e.target.value)}
-                      className="flex-1 bg-transparent px-2 h-12 text-center font-black text-3xl focus:outline-none text-foreground"
+                      className="flex-1 min-w-0 bg-transparent px-2 h-12 text-center font-black text-3xl focus:outline-none text-foreground"
                     />
                     <button 
                       onClick={() => setQuantity((qtyNum + 1).toString())}
-                      className="w-12 h-12 rounded-lg bg-card border border-border flex items-center justify-center text-xl font-bold hover:bg-surface transition-colors text-foreground shadow-sm"
-                    >+</button>
+                      className="w-12 h-12 shrink-0 rounded-lg bg-card border border-border flex items-center justify-center hover:bg-surface transition-colors text-foreground shadow-sm"
+                    ><Plus className="w-5 h-5" /></button>
                   </div>
                 </div>
 
                 {/* Review Transaction Card (Image 1 style) */}
                 <div className="bg-surface/70 rounded-xl p-4 sm:p-5 border border-border/50 space-y-3">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Money Received</span>
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{T('sale.moneyReceived')}</span>
                     <span className="text-2xl font-black text-foreground">₦{revenue.toLocaleString()}</span>
                   </div>
                   {product.purchasePrice > 0 && (
                     <div className="flex justify-between items-center pt-2.5 border-t border-border/50">
-                      <span className="text-xs text-muted-foreground font-medium">Profit so far on {product.name}</span>
+                      <span className="text-xs text-muted-foreground font-medium">{tf(lang, 'sale.profitOn', product.name)}</span>
                       <span className={`font-bold text-xs px-2.5 py-1 rounded-full ${
                         runningProfit < 0 ? 'text-rose-400 bg-rose-500/10' : 'text-emerald-400 bg-emerald-500/10'
                       }`}>
@@ -250,7 +254,7 @@ export default function SaleModal({
                 {isSubmitting ? (
                   <RefreshCw className="w-5 h-5 animate-spin" />
                 ) : (
-                  'Record Sale'
+                  T('sale.record')
                 )}
               </button>
             </>

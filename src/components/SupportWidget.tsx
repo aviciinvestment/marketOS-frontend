@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MessageSquare, X, Send, Phone, AlertCircle, CheckCircle2, Wifi, WifiOff, Clock } from 'lucide-react';
 import { API_ENDPOINTS } from '../config/api';
+import { useAppLang, useAppT, tf } from '../i18n';
 
 interface SupportComplaint {
   id: string;
@@ -19,11 +20,23 @@ interface SupportWidgetProps {
 
 const STORAGE_KEY = 'marketos_offline_complaints';
 
+const CATEGORIES = [
+  { value: 'Sync & Connection', labelKey: 'support.catSync' },
+  { value: 'Sales & Quick Sell', labelKey: 'support.catSales' },
+  { value: 'Stock & Yields', labelKey: 'support.catStock' },
+  { value: 'Calculations & Profit', labelKey: 'support.catCalc' },
+  { value: 'Account & Auth', labelKey: 'support.catAuth' },
+  { value: 'Feature Request', labelKey: 'support.catFeature' },
+  { value: 'Urgent Bug', labelKey: 'support.catBug' },
+];
+
 export const SupportWidget: React.FC<SupportWidgetProps> = ({ userEmail, userId }) => {
+  const lang = useAppLang();
+  const T = useAppT();
   const [isOpen, setIsOpen] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState(userEmail || '');
-  const [category, setCategory] = useState('Sync & Connection');
+  const [category, setCategory] = useState(CATEGORIES[0].value);
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success-online' | 'success-offline' | 'error'>('idle');
@@ -118,12 +131,12 @@ export const SupportWidget: React.FC<SupportWidgetProps> = ({ userEmail, userId 
     // Strict Phone number validation (Nigerian standard: 10-15 digits or e.g. 080..., +234...)
     const cleanPhone = phoneNumber.replace(/[\s-]/g, '');
     if (!cleanPhone || cleanPhone.length < 10) {
-      setErrorMessage('Please provide a valid active phone number (e.g. 08012345678 or +234...)');
+      setErrorMessage(T('support.errPhone'));
       return;
     }
 
     if (!message.trim()) {
-      setErrorMessage('Please describe the issue or complaint in detail.');
+      setErrorMessage(T('support.errMsg'));
       return;
     }
 
@@ -199,17 +212,17 @@ export const SupportWidget: React.FC<SupportWidgetProps> = ({ userEmail, userId 
       {/* Floating Action Button at Bottom Right - Lifted up on mobile to avoid intersecting with bottom nav */}
       <div className="fixed bottom-24 md:bottom-6 right-4 md:right-6 z-50 flex flex-col items-end gap-2">
         {offlineQueueCount > 0 && (
-          <div className="bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs px-2.5 py-1 rounded-xl shadow-lg backdrop-blur-md flex items-center gap-1.5 animate-pulse">
+          <div className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-xs px-2.5 py-1 rounded-xl shadow-lg backdrop-blur-md flex items-center gap-1.5 animate-pulse">
             <Clock size={12} />
-            <span>{offlineQueueCount} complaint{offlineQueueCount > 1 ? 's' : ''} queued offline</span>
+            <span>{tf(lang, 'support.queued', offlineQueueCount)}</span>
           </div>
         )}
 
         <button
           id="support-complaint-trigger-btn"
           onClick={() => setIsOpen(!isOpen)}
-          className="relative group flex items-center justify-center w-12 h-12 md:w-13 md:h-13 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold shadow-2xl hover:shadow-amber-500/30 hover:scale-105 active:scale-95 transition-all duration-200 border border-amber-300/40"
-          title="Direct Support & Urgent Complaint Desk"
+          className="relative group flex items-center justify-center w-12 h-12 md:w-14 md:h-14 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-bold shadow-2xl hover:shadow-amber-500/30 hover:scale-105 active:scale-95 transition-all duration-200 border border-amber-300/40"
+          title={T('support.btnTitle')}
         >
           {isOpen ? (
             <X size={22} className="text-slate-950" />
@@ -218,7 +231,7 @@ export const SupportWidget: React.FC<SupportWidgetProps> = ({ userEmail, userId 
           )}
 
           {/* Indicator Dot */}
-          <span className={`absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-slate-900 ${isOnline ? 'bg-emerald-500' : 'bg-red-500'}`} />
+          <span className={`absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-card ${isOnline ? 'bg-emerald-500' : 'bg-red-500'}`} />
         </button>
       </div>
 
@@ -231,27 +244,27 @@ export const SupportWidget: React.FC<SupportWidgetProps> = ({ userEmail, userId 
             onClick={() => setIsOpen(false)}
           />
 
-          <div className="fixed inset-x-3 bottom-20 md:bottom-22 md:right-6 md:left-auto md:inset-x-auto z-50 w-auto md:w-[410px] max-h-[80vh] bg-[#0E1118] border border-slate-700/80 rounded-2xl shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
+          <div className="fixed inset-x-3 bottom-20 md:bottom-22 md:right-6 md:left-auto md:inset-x-auto z-50 w-auto md:w-[410px] max-h-[80vh] bg-card border border-border rounded-2xl shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
           {/* Header */}
-          <div className="p-4 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-b border-slate-700/60 flex items-center justify-between">
+          <div className="p-4 border-b border-border/60 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
                 <MessageSquare size={16} />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
-                  Merchant Support Desk
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  {T('support.title')}
                 </h3>
-                <p className="text-[11px] text-slate-400 flex items-center gap-1">
+                <p className="text-[11px] text-muted-foreground flex items-center gap-1">
                   {isOnline ? (
                     <>
-                      <Wifi size={11} className="text-emerald-400" />
-                      <span className="text-emerald-400">Online</span> • Direct dispatch to founder
+                      <Wifi size={11} className="text-emerald-500" />
+                      <span className="text-emerald-600 dark:text-emerald-400">{T('support.online')}</span> • {T('support.direct')}
                     </>
                   ) : (
                     <>
-                      <WifiOff size={11} className="text-amber-400" />
-                      <span className="text-amber-400">Offline</span> • Saved to local device
+                      <WifiOff size={11} className="text-amber-500" />
+                      <span className="text-amber-600 dark:text-amber-400">{T('support.offline')}</span> • {T('support.savedLocal')}
                     </>
                   )}
                 </p>
@@ -259,7 +272,7 @@ export const SupportWidget: React.FC<SupportWidgetProps> = ({ userEmail, userId 
             </div>
             <button
               onClick={() => setIsOpen(false)}
-              className="text-slate-400 hover:text-slate-100 p-1 rounded-lg hover:bg-slate-800 transition-colors"
+              className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-surface transition-colors"
             >
               <X size={18} />
             </button>
@@ -268,31 +281,31 @@ export const SupportWidget: React.FC<SupportWidgetProps> = ({ userEmail, userId 
           {/* Body */}
           <div className="p-4 overflow-y-auto space-y-3.5 text-xs">
             {submitStatus === 'success-online' && (
-              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 flex items-start gap-2.5">
-                <CheckCircle2 size={18} className="shrink-0 mt-0.5 text-emerald-400" />
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-600 dark:text-emerald-400 flex items-start gap-2.5">
+                <CheckCircle2 size={18} className="shrink-0 mt-0.5" />
                 <div>
-                  <div className="font-semibold text-sm">Complaint Received!</div>
-                  <div className="text-[11px] text-emerald-300/80 mt-0.5">
-                    Our founder and support engineering team have received your log. We will reach you on your phone number shortly.
+                  <div className="font-semibold text-sm">{T('support.gotTitle')}</div>
+                  <div className="text-[11px] text-emerald-700/80 dark:text-emerald-300/80 mt-0.5">
+                    {T('support.gotDesc')}
                   </div>
                 </div>
               </div>
             )}
 
             {submitStatus === 'success-offline' && (
-              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 flex items-start gap-2.5">
-                <Clock size={18} className="shrink-0 mt-0.5 text-amber-400" />
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-600 dark:text-amber-400 flex items-start gap-2.5">
+                <Clock size={18} className="shrink-0 mt-0.5" />
                 <div>
-                  <div className="font-semibold text-sm">Saved in Local Storage (Offline)</div>
-                  <div className="text-[11px] text-amber-300/80 mt-0.5">
-                    You appear to be offline or server is connecting. Your complaint is safely stored on your device and will dispatch automatically once internet reconnects!
+                  <div className="font-semibold text-sm">{T('support.savedTitle')}</div>
+                  <div className="text-[11px] text-amber-700/80 dark:text-amber-300/80 mt-0.5">
+                    {T('support.savedDesc')}
                   </div>
                 </div>
               </div>
             )}
 
             {errorMessage && (
-              <div className="p-2.5 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 flex items-center gap-2">
+              <div className="p-2.5 bg-red-500/10 border border-red-500/30 rounded-xl text-red-600 dark:text-red-400 flex items-center gap-2">
                 <AlertCircle size={15} className="shrink-0" />
                 <span>{errorMessage}</span>
               </div>
@@ -301,62 +314,58 @@ export const SupportWidget: React.FC<SupportWidgetProps> = ({ userEmail, userId 
             <form onSubmit={handleSubmit} className="space-y-3">
               {/* Phone Number Field (Mandatory per requirement) */}
               <div>
-                <label className="block text-slate-300 font-medium mb-1 flex items-center justify-between">
-                  <span>Your Phone Number <span className="text-amber-400">*</span></span>
-                  <span className="text-[10px] text-slate-500 font-normal">For direct call/WhatsApp</span>
+                <label className="block text-foreground font-medium mb-1 flex items-center justify-between">
+                  <span>{T('support.phoneLabel')} <span className="text-amber-400">*</span></span>
+                  <span className="text-[10px] text-muted-foreground font-normal">{T('support.phoneHint')}</span>
                 </label>
                 <div className="relative">
-                  <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Phone size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   <input
                     type="tel"
                     id="support-phone-input"
                     required
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
-                    placeholder="e.g. 08023456789 or +234..."
-                    className="w-full pl-9 pr-3 py-2 bg-slate-900/90 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-xs"
+                    placeholder={T('support.phonePlaceholder')}
+                    className="w-full pl-9 pr-3 py-2.5 bg-surface border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-xs"
                   />
                 </div>
               </div>
 
               {/* Email Address */}
               <div>
-                <label className="block text-slate-300 font-medium mb-1">
-                  Email Address <span className="text-slate-500 text-[10px] font-normal">(Optional)</span>
+                <label className="block text-foreground font-medium mb-1">
+                  {T('support.emailLabel')} <span className="text-muted-foreground text-[10px] font-normal">{T('support.emailOptional')}</span>
                 </label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="e.g. store@market.ng"
-                  className="w-full px-3 py-2 bg-slate-900/90 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-xs"
+                  placeholder={T('support.emailPlaceholder')}
+                  className="w-full px-3 py-2.5 bg-surface border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-xs"
                 />
               </div>
 
               {/* Issue Category */}
               <div>
-                <label className="block text-slate-300 font-medium mb-1">
-                  Category
+                <label className="block text-foreground font-medium mb-1">
+                  {T('support.category')}
                 </label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-900/90 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-xs"
+                  className="w-full px-3 py-2.5 bg-surface border border-border rounded-lg text-foreground focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-xs"
                 >
-                  <option value="Sync & Connection">Offline Sync & Network</option>
-                  <option value="Sales & Quick Sell">Quick Sell & Recording Issue</option>
-                  <option value="Stock & Yields">Products, Inventory & Yields</option>
-                  <option value="Calculations & Profit">Profit/Cashflow Calculations</option>
-                  <option value="Account & Auth">Login / Account Auth</option>
-                  <option value="Feature Request">Suggestion / Feature Request</option>
-                  <option value="Urgent Bug">Other Urgent Bug</option>
+                  {CATEGORIES.map(cat => (
+                    <option key={cat.value} value={cat.value}>{T(cat.labelKey)}</option>
+                  ))}
                 </select>
               </div>
 
               {/* Complaint Details */}
               <div>
-                <label className="block text-slate-300 font-medium mb-1">
-                  Describe what went wrong <span className="text-amber-400">*</span>
+                <label className="block text-foreground font-medium mb-1">
+                  {T('support.issueLabel')} <span className="text-amber-400">*</span>
                 </label>
                 <textarea
                   id="support-message-input"
@@ -364,8 +373,8 @@ export const SupportWidget: React.FC<SupportWidgetProps> = ({ userEmail, userId 
                   rows={3}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Provide details on what you were doing, what error appeared, or what you need resolved..."
-                  className="w-full px-3 py-2 bg-slate-900/90 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-xs resize-none"
+                  placeholder={T('support.issuePlaceholder')}
+                  className="w-full px-3 py-2.5 bg-surface border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-xs resize-none"
                 />
               </div>
 
@@ -374,20 +383,20 @@ export const SupportWidget: React.FC<SupportWidgetProps> = ({ userEmail, userId 
                 type="submit"
                 id="support-submit-btn"
                 disabled={isSubmitting}
-                className="w-full py-2.5 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-semibold rounded-lg flex items-center justify-center gap-2 transition-all duration-150 shadow-md disabled:opacity-50"
+                className="w-full py-3 px-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-semibold rounded-lg flex items-center justify-center gap-2 transition-all duration-150 shadow-md disabled:opacity-50"
               >
                 {isSubmitting ? (
                   <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <>
                     <Send size={14} />
-                    <span>{isOnline ? 'Send Complaint Directly' : 'Save Offline in Local Storage'}</span>
+                    <span>{isOnline ? T('support.sendOnline') : T('support.saveOffline')}</span>
                   </>
                 )}
               </button>
 
-              <p className="text-[10px] text-center text-slate-500">
-                Complaints are stored locally when offline and dispatched directly to the founder for immediate resolution.
+              <p className="text-[10px] text-center text-muted-foreground">
+                {T('support.footNote')}
               </p>
             </form>
           </div>

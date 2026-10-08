@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ShoppingBag, Package, Wallet, TrendingUp, Layers, CircleDollarSign, PieChart } from 'lucide-react';
 import { saleRevenue, stockOf } from '../utils/finance';
+import { useAppT, useAppLang, tf } from '../i18n';
 
 export default function ProductAnalysis({ products, sales = [], onSell }: {
   products: any[];
@@ -8,12 +9,14 @@ export default function ProductAnalysis({ products, sales = [], onSell }: {
   onSell?: (product: any) => void;
 }) {
   const [selectedId, setSelectedId] = useState<string>('');
+  const T = useAppT();
+  const lang = useAppLang();
 
   if (products.length === 0) {
     return (
       <div className="bg-card rounded-2xl p-6 sm:p-8 shadow-sm border border-border text-center">
-        <h3 className="font-bold text-lg text-foreground mb-2">Business Analysis</h3>
-        <p className="text-sm text-muted-foreground">Add a product and start selling to see its analysis here.</p>
+        <h3 className="font-bold text-lg text-foreground mb-2">{T('analysis.title')}</h3>
+        <p className="text-sm text-muted-foreground">{T('analysis.empty')}</p>
       </div>
     );
   }
@@ -82,9 +85,9 @@ export default function ProductAnalysis({ products, sales = [], onSell }: {
         <div>
           <h3 className="font-extrabold text-lg text-foreground flex items-center gap-2 tracking-tight">
             <PieChart className="w-5 h-5 text-amber-400" />
-            Product Financials
+            {T('analysis.title')}
           </h3>
-          <p className="text-xs text-muted-foreground mt-0.5">Performance breakdown per item</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{T('analysis.subtitle')}</p>
         </div>
         
         {/* Product selector pills */}
@@ -97,7 +100,7 @@ export default function ProductAnalysis({ products, sales = [], onSell }: {
                 : 'bg-surface border border-border text-muted-foreground hover:text-foreground'
             }`}
           >
-            All Products
+            {T('analysis.all')}
           </button>
           {products.map(p => (
             <button
@@ -124,7 +127,7 @@ export default function ProductAnalysis({ products, sales = [], onSell }: {
               <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center shrink-0">
                 <Wallet className="w-4 h-4" />
               </div>
-              <span className="whitespace-nowrap">Money Made</span>
+              <span className="whitespace-nowrap">{T('analysis.moneyMade')}</span>
             </div>
             <div className="font-black text-base sm:text-lg xl:text-xl text-foreground text-right xl:text-left xl:mt-2 shrink-0 whitespace-nowrap" title={`₦${fmt(moneyMade)}`}>
               ₦{fmt(moneyMade)}
@@ -137,7 +140,7 @@ export default function ProductAnalysis({ products, sales = [], onSell }: {
               <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
                 <Layers className="w-4 h-4" />
               </div>
-              <span className="whitespace-nowrap">Goods Cost</span>
+              <span className="whitespace-nowrap">{T('analysis.goodsCost')}</span>
             </div>
             <div className="font-black text-base sm:text-lg xl:text-xl text-foreground text-right xl:text-left xl:mt-2 shrink-0 whitespace-nowrap" title={`₦${fmt(goodsCost)}`}>
               ₦{fmt(goodsCost)}
@@ -150,7 +153,7 @@ export default function ProductAnalysis({ products, sales = [], onSell }: {
               <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${profit < 0 ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}`}>
                 <TrendingUp className="w-4 h-4" />
               </div>
-              <span className="whitespace-nowrap">Gross Profit</span>
+              <span className="whitespace-nowrap">{T('analysis.grossProfit')}</span>
             </div>
             <div className={`font-black text-base sm:text-lg xl:text-xl text-right xl:text-left xl:mt-2 shrink-0 whitespace-nowrap ${profit < 0 ? 'text-rose-400' : 'text-emerald-400'}`} title={fmtSigned(profit)}>
               {fmtSigned(profit)}
@@ -162,7 +165,7 @@ export default function ProductAnalysis({ products, sales = [], onSell }: {
         {goodsCost > 0 && (
           <div className="bg-surface/40 p-3.5 sm:p-4 rounded-xl border border-border/40">
             <div className="flex justify-between items-center text-xs font-bold text-muted-foreground mb-2 flex-wrap gap-1.5">
-              <span>Cost Recovery Progress</span>
+              <span>{T('analysis.costRecovery')}</span>
               <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${moneyMade >= goodsCost ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-400'}`}>
                 {moneyMade >= goodsCost ? 'Cost Covered ✓' : `₦${fmt(Math.max(0, goodsCost - moneyMade))} to recover`}
               </span>
@@ -187,7 +190,7 @@ export default function ProductAnalysis({ products, sales = [], onSell }: {
               <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/20">
                 <Package className="w-4 h-4" />
               </div>
-              <span className="whitespace-nowrap">Stock Left</span>
+              <span className="whitespace-nowrap">{T('analysis.stockLeft')}</span>
             </div>
             <div className="font-extrabold text-xs sm:text-sm xl:text-base text-foreground text-right xl:text-left xl:mt-2 shrink-0 whitespace-nowrap">
               {qtyRemaining.toLocaleString(undefined, { maximumFractionDigits: 2 })}{selected ? ` ${selected.purchaseUnit || ''}` : ''}
@@ -201,7 +204,7 @@ export default function ProductAnalysis({ products, sales = [], onSell }: {
               <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/20">
                 <ShoppingBag className="w-4 h-4" />
               </div>
-              <span className="whitespace-nowrap">Units Sold</span>
+              <span className="whitespace-nowrap">{T('analysis.unitsSold')}</span>
             </div>
             <div className="font-extrabold text-xs sm:text-sm xl:text-base text-foreground text-right xl:text-left xl:mt-2 shrink-0 whitespace-nowrap">
               {unitsSold.toLocaleString()}
@@ -214,10 +217,10 @@ export default function ProductAnalysis({ products, sales = [], onSell }: {
               <div className="w-8 h-8 rounded-lg bg-sky-500/10 text-sky-400 flex items-center justify-center shrink-0 border border-sky-500/20">
                 <CircleDollarSign className="w-4 h-4" />
               </div>
-              <span className="whitespace-nowrap">Top Selling</span>
+              <span className="whitespace-nowrap">{T('analysis.topSelling')}</span>
             </div>
             <div className="font-extrabold text-xs sm:text-sm xl:text-base text-foreground text-right xl:text-left xl:mt-2 break-words">
-              {topUnit ? `${topUnit.unitName} (₦${fmt(topUnit.revenue)})` : 'None yet'}
+              {topUnit ? `${topUnit.unitName} (₦${fmt(topUnit.revenue)})` : T('analysis.noneYet')}
             </div>
           </div>
         </div>
@@ -236,7 +239,7 @@ export default function ProductAnalysis({ products, sales = [], onSell }: {
       {/* Recent sales for this product */}
       {selected && recentSales.length > 0 && (
         <div className="border-t border-border/60 pt-5 mt-2">
-          <h4 className="font-bold text-sm text-foreground mb-3 tracking-tight">Recent Sales of {selected.name}</h4>
+          <h4 className="font-bold text-sm text-foreground mb-3 tracking-tight">{tf(lang, 'analysis.recentSales', selected.name)}</h4>
           <div className="flex flex-col gap-2">
             {recentSales.map((s: any, idx: number) => (
               <div key={s.id || idx} className="flex justify-between items-center p-3 rounded-xl bg-surface/40 hover:bg-surface border border-border/50 transition-all min-w-0">

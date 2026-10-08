@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Check, ShoppingBag, Trash2 } from 'lucide-react';
 import AlertDialog from './ui/AlertDialog';
+import { useAppT, useAppLang, tf } from '../i18n';
 
 interface EditSaleModalProps {
   isOpen: boolean;
@@ -23,6 +24,9 @@ export default function EditSaleModal({
   const [unitName, setUnitName] = useState<string>('Piece');
   const [dateStr, setDateStr] = useState<string>('');
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
+  const T = useAppT();
+  const lang = useAppLang();
 
   useEffect(() => {
     if (isOpen && sale) {
@@ -77,7 +81,7 @@ export default function EditSaleModal({
                 <ShoppingBag className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-base font-black text-foreground">Edit Sale Record</h3>
+                <h3 className="text-base font-black text-foreground">{T('edit.title')}</h3>
                 <p className="text-xs text-muted-foreground font-medium truncate max-w-[220px]">
                   {sale.productName || 'Sale Entry'}
                 </p>
@@ -96,7 +100,7 @@ export default function EditSaleModal({
             {/* Quantity */}
             <div>
               <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1.5">
-                Quantity Sold
+                {T('sale.quantitySold')}
               </label>
               <input
                 type="number"
@@ -110,13 +114,13 @@ export default function EditSaleModal({
             {/* Selling Unit Name */}
             <div>
               <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1.5">
-                Selling Unit
+                {T('edit.sellingUnit')}
               </label>
               <input
                 type="text"
                 value={unitName}
                 onChange={(e) => setUnitName(e.target.value)}
-                placeholder="e.g. Piece, Bag, Kg, Cup"
+                placeholder={T('edit.unitPlaceholder')}
                 className="w-full bg-surface border border-border/80 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-foreground focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/30"
               />
             </div>
@@ -124,7 +128,7 @@ export default function EditSaleModal({
             {/* Price per unit */}
             <div>
               <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1.5">
-                Price Per {unitName || 'Unit'} (₦)
+                {tf(lang, 'edit.pricePerUnit', unitName || T('edit.sellingUnit'))}
               </label>
               <input
                 type="number"
@@ -140,7 +144,7 @@ export default function EditSaleModal({
             <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between">
               <div>
                 <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block">
-                  Total Calculated Revenue
+                  {T('edit.totalRevenueLabel')}
                 </span>
                 <span className="text-xs text-muted-foreground">
                   {qtyNum} × ₦{priceNum.toLocaleString()}
@@ -157,7 +161,7 @@ export default function EditSaleModal({
             {dateStr && (
               <div>
                 <label className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider block mb-1.5">
-                  Sale Date & Time
+                  {T('edit.saleDateTime')}
                 </label>
                 <input
                   type="datetime-local"
@@ -179,7 +183,7 @@ export default function EditSaleModal({
                   className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 border border-rose-500/20 transition-colors"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Delete Sale</span>
+                  <span>{T('edit.deleteSale')}</span>
                 </button>
               ) : <div />}
 
@@ -189,7 +193,7 @@ export default function EditSaleModal({
                   onClick={onClose}
                   className="px-4 py-2 rounded-xl text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-surface border border-border/60 transition-colors"
                 >
-                  Cancel
+                  {T('action.cancel')}
                 </button>
                 <button
                   type="button"
@@ -197,7 +201,7 @@ export default function EditSaleModal({
                   className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-extrabold bg-[#F5C518] hover:bg-[#EAB308] text-black shadow-md shadow-amber-500/20 transition-all"
                 >
                   <Check className="w-3.5 h-3.5 stroke-[3]" />
-                  <span>Save Changes</span>
+                  <span>{T('edit.saveChanges')}</span>
                 </button>
               </div>
             </div>
@@ -207,11 +211,11 @@ export default function EditSaleModal({
         {/* Delete Confirmation Modal */}
         <AlertDialog
           isOpen={isDeleteModalOpen}
-          title="Delete Sale Record"
-          description={`Are you sure you want to permanently delete this sale of "${sale.productName || 'item'}"? It will be removed across all devices.`}
+          title={T('edit.deleteTitle')}
+          description={`${tf(lang, 'edit.deleteDesc', sale.productName || 'item')}`}
           type="danger"
-          confirmText="Yes, Delete Sale"
-          cancelText="Cancel"
+          confirmText={T('edit.deleteConfirm')}
+          cancelText={T('action.cancel')}
           onConfirm={() => {
             if (onDelete) onDelete(sale.id);
             setIsDeleteModalOpen(false);

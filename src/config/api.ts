@@ -1,12 +1,15 @@
 /**
  * Centralized API Configuration for MarketOS Web Frontend
- * 
+ *
  * TO REPLACE FOR PUBLISHING / PRODUCTION:
- * - Option A: Set VITE_API_URL in your hosting environment variables (Render, Vercel, Railway, etc.)
- * - Option B: Update DEFAULT_API_URL below with your published backend URL (e.g. 'https://api.yourdomain.com')
+ * - Set VITE_API_URL (or VITE_API_BASE_URL) in your hosting environment variables (Render, Vercel, Railway, etc.)
+ * - There is no hardcoded backend URL here anymore; the app reads the env only.
  */
 
-export const DEFAULT_API_URL = 'http://localhost:3005';
+export const DEFAULT_API_URL =
+  (import.meta.env.VITE_API_URL as string) ||
+  (import.meta.env.VITE_API_BASE_URL as string) ||
+  '';
 
 export const getApiBaseUrl = (): string => {
   if (typeof window !== 'undefined') {
@@ -15,11 +18,7 @@ export const getApiBaseUrl = (): string => {
       return custom.trim().replace(/\/+$/, '');
     }
   }
-  return (
-    (import.meta.env.VITE_API_URL as string) ||
-    (import.meta.env.VITE_API_BASE_URL as string) ||
-    DEFAULT_API_URL
-  ).replace(/\/+$/, '');
+  return DEFAULT_API_URL.replace(/\/+$/, '');
 };
 
 export const API_BASE_URL: string = getApiBaseUrl();
@@ -36,4 +35,5 @@ export const API_ENDPOINTS = {
   get adminLogs() { return `${getApiBaseUrl()}/api/admin/logs`; },
   get adminComplaints() { return `${getApiBaseUrl()}/api/admin/complaints`; },
   get supportComplaint() { return `${getApiBaseUrl()}/api/support/complaint`; },
+  get uploadAvatar() { return `${getApiBaseUrl()}/api/profile/upload-avatar`; },
 };
