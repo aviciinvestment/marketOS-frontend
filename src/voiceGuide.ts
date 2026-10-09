@@ -1,4 +1,5 @@
 import type { LanguageCode } from './i18n';
+import { cancel as cancelTts, speak as speakTts } from './tts';
 
 export type GuidePage = 'landing' | 'home' | 'products' | 'insights' | 'settings' | 'admin' | 'guide';
 
@@ -39,51 +40,12 @@ export function subscribeVoiceGuide(cb: () => void): () => void {
   };
 }
 
-let voices: SpeechSynthesisVoice[] = [];
-
-function refreshVoices() {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-  voices = window.speechSynthesis.getVoices() || [];
-}
-
-if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-  refreshVoices();
-  window.speechSynthesis.onvoiceschanged = refreshVoices;
-}
-
-const PREFERRED_LOCALE: Record<LanguageCode, string> = {
-  en: 'en-NG',
-  pidgin: 'en-NG',
-  igbo: 'ig-NG',
-  yoruba: 'yo-NG',
-  hausa: 'ha-NG',
-};
-
 export function cancelSpeech(): void {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-  window.speechSynthesis.cancel();
+  cancelTts();
 }
 
 export function speak(text: string, lang: LanguageCode): void {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-  const synth = window.speechSynthesis;
-  if (!synth) return;
-  synth.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  const locale = PREFERRED_LOCALE[lang] || 'en';
-  const match =
-    voices.find((v) => v.lang && v.lang.toLowerCase().startsWith(locale.toLowerCase())) ||
-    voices.find((v) => v.lang && v.lang.toLowerCase().startsWith('en')) ||
-    voices.find((v) => v.lang && v.lang.toLowerCase().includes('en'));
-  if (match) {
-    utterance.voice = match;
-    utterance.lang = match.lang;
-  } else {
-    utterance.lang = locale;
-  }
-  utterance.rate = 0.92;
-  utterance.pitch = 1;
-  synth.speak(utterance);
+  void speakTts(text, lang);
 }
 
 export function readPage(page: GuidePage, lang: LanguageCode): void {
