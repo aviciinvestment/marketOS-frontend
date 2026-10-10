@@ -36,4 +36,12 @@ export const API_ENDPOINTS = {
   get adminComplaints() { return `${getApiBaseUrl()}/api/admin/complaints`; },
   get supportComplaint() { return `${getApiBaseUrl()}/api/support/complaint`; },
   get uploadAvatar() { return `${getApiBaseUrl()}/api/profile/upload-avatar`; },
+  get authValidateSignup() { return `${getApiBaseUrl()}/api/auth/validate-signup`; },
+  get authValidateSignin() { return `${getApiBaseUrl()}/api/auth/validate-signin`; },
+  get authForgotPassword() { return `${getApiBaseUrl()}/api/auth/forgot-password`; },
+  get paywallConfig() { return `${getApiBaseUrl()}/api/paywall/config`; },
+  get paywallStatus() { return `${getApiBaseUrl()}/api/paywall/status`; },
+  get paywallInitialize() { return `${getApiBaseUrl()}/api/paywall/initialize`; },
+  paywallVerify(reference: string) { return `${getApiBaseUrl()}/api/paywall/verify/${encodeURIComponent(reference)}`; },
+  get adminPaywall() { return `${getApiBaseUrl()}/api/admin/paywall`; },
 };

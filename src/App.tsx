@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, GoogleAuthProvider, signInWithPopup, sendEmailVerification, sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from './firebase';
+import {
+  validateSignup,
+  validateSignin,
+  validateForgotPassword,
+  type FieldErrors,
+} from './utils/validation';
 import {
   Search, Bell, Plus,
   Home,
@@ -26,6 +32,7 @@ import BrandLogo from './components/BrandLogo';
 import AlertDialog, { type AlertType } from './components/ui/AlertDialog';
 import LegalModal from './components/LegalModal';
 import { AdminView } from './components/AdminView';
+import InsightPaywall from './components/InsightPaywall';
 import { LandingPage } from './components/LandingPage';
 import { SupportWidget } from './components/SupportWidget';
 import { VoiceGuideButton } from './components/VoiceGuideButton';
@@ -165,8 +172,46 @@ function App() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [authNotice, setAuthNotice] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [forgotMode, setForgotMode] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
   const [consentAgreed, setConsentAgreed] = useState(false);
   const [legalModalTab, setLegalModalTab] = useState<'privacy' | 'terms' | null>(null);
+
+  // Ask the backend to re-validate the payload (server-side validation).
+  // Returns an error message if the server rejected it, or null to continue.
+  // If the server cannot be reached we fall back to the client validation that
+  // already ran, so the app keeps working offline.
+  const validateOnServer = useCallback(
+    async (
+      endpoint: string,
+      payload: Record<string, unknown>
+    ): Promise<{ message: string; errors?: FieldErrors } | null> => {
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) return null;
+        // Only treat real validation rejections as blocking. A 404 (endpoint
+        // not deployed yet) or 5xx (server trouble) must NOT block the user —
+        // the client-side validation already ran, so let the flow continue.
+        if (res.status === 400 || res.status === 422) {
+          const data = await res.json().catch(() => ({}));
+          return {
+            message: data?.message || data?.error || 'Validation failed. Please check your details.',
+            errors: data?.errors,
+          };
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -188,26 +233,92 @@ function App() {
     return () => unsubscribe();
   }, []);
 
+  const friendlyAuthError = (err: any): string => {
+    const code = String(err?.code || '');
+    switch (code) {
+      case 'auth/email-already-in-use':
+        return 'An account already exists with this email. Try signing in instead.';
+      case 'auth/invalid-email':
+        return 'Please enter a valid email address.';
+      case 'auth/weak-password':
+        return 'Your password is too weak. Use at least 8 characters with letters, numbers and a symbol.';
+      case 'auth/user-not-found':
+      case 'auth/wrong-password':
+      case 'auth/invalid-credential':
+        return 'Incorrect email or password.';
+      case 'auth/too-many-requests':
+        return 'Too many attempts. Please wait a moment and try again.';
+      case 'auth/network-request-failed':
+        return 'Network error. Check your connection and try again.';
+      default:
+        return err?.message || 'Something went wrong. Please try again.';
+    }
+  };
+
   const handleAuth = async (e: any) => {
     e.preventDefault();
+    if (authBusy) return;
     setAuthError('');
+    setAuthNotice('');
+    setFieldErrors({});
+
+    // 1) Client-side validation
+    const result = isSignUp
+      ? validateSignup({ fullName: username, email, password, confirmPassword })
+      : validateSignin({ email, password });
+
+    if (!result.valid) {
+      setFieldErrors(result.errors);
+      setAuthError(result.message);
+      return;
+    }
+
     if (isSignUp && !consentAgreed) {
       setAuthError('You must agree to the Terms & Conditions and Privacy Policy (NDPA 2023) to create your account.');
       return;
     }
-    if (isSignUp && password !== confirmPassword) {
-      setAuthError('Passwords do not match');
-      return;
-    }
+
+    setAuthBusy(true);
     try {
+      // 2) Server-side validation (source of truth)
+      const serverError = await validateOnServer(
+        isSignUp ? API_ENDPOINTS.authValidateSignup : API_ENDPOINTS.authValidateSignin,
+        isSignUp
+          ? { fullName: username.trim(), email: email.trim(), password, confirmPassword }
+          : { email: email.trim(), password }
+      );
+      if (serverError) {
+        if (serverError.errors) setFieldErrors(serverError.errors);
+        setAuthError(serverError.message);
+        return;
+      }
+
+      // 3) Firebase authentication
       if (isSignUp) {
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
-        await updateProfile(cred.user, { displayName: username });
+        const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        await updateProfile(cred.user, { displayName: username.trim() });
+        // Email confirmation: the account cannot be used until the user opens
+        // the confirmation link we send to their inbox.
+        await sendEmailVerification(cred.user);
+        await signOut(auth);
+        setAuthNotice(`We've sent a confirmation link to ${email.trim()}. Please open it to confirm your email, then sign in.`);
+        setEmail('');
+        setPassword('');
+        setConfirmPassword('');
+        setUsername('');
+        setIsSignUp(false);
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+        const isFounderAccount = cred.user.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+        if (!cred.user.emailVerified && !isFounderAccount) {
+          await sendEmailVerification(cred.user).catch(() => {});
+          await signOut(auth);
+          setAuthError('Your email is not confirmed yet. We just sent you a fresh confirmation link — please confirm your email, then sign in again.');
+          return;
+        }
       }
     } catch (err: any) {
-      setAuthError(err.message);
+      setAuthError(friendlyAuthError(err));
       // Dispatch realtime telemetry to admin log
       fetch(`${API_BASE_URL}/api/admin/telemetry`, {
         method: 'POST',
@@ -219,11 +330,47 @@ function App() {
           detail: `Auth failure: ${err.message}`
         })
       }).catch(() => {});
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: any) => {
+    e.preventDefault();
+    if (authBusy) return;
+    setAuthError('');
+    setAuthNotice('');
+    setFieldErrors({});
+
+    const result = validateForgotPassword({ email });
+    if (!result.valid) {
+      setFieldErrors(result.errors);
+      setAuthError(result.message);
+      return;
+    }
+
+    setAuthBusy(true);
+    try {
+      const serverError = await validateOnServer(API_ENDPOINTS.authForgotPassword, { email: email.trim() });
+      if (serverError) {
+        if (serverError.errors) setFieldErrors(serverError.errors);
+        setAuthError(serverError.message);
+        return;
+      }
+      await sendPasswordResetEmail(auth, email.trim());
+      setAuthNotice(`If an account exists for ${email.trim()}, a password reset link is on its way. Please check your inbox (and spam) and follow the link to set a new password.`);
+    } catch (err: any) {
+      setAuthError(friendlyAuthError(err));
+    } finally {
+      setAuthBusy(false);
     }
   };
 
   const handleGoogleAuth = async () => {
     setAuthError('');
+    setAuthNotice('');
+    setFieldErrors({});
+    setForgotMode(false);
     if (isSignUp && !consentAgreed) {
       setAuthError('You must agree to the Terms & Conditions and Privacy Policy (NDPA 2023) to create your account.');
       return;
@@ -232,7 +379,7 @@ function App() {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
     } catch (err: any) {
-      setAuthError(err.message);
+      setAuthError(friendlyAuthError(err));
       fetch(`${API_BASE_URL}/api/admin/telemetry`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -316,15 +463,19 @@ function App() {
   ];
 
   useEffect(() => {
-    if (user) {
-      if (user.displayName) setProfileDisplayName(user.displayName);
-      if (user.photoURL) {
-        setAvatarUrl(user.photoURL);
-        localStorage.setItem('marketos_user_avatar', user.photoURL);
-      } else {
-        const cached = localStorage.getItem('marketos_user_avatar');
-        if (cached) setAvatarUrl(cached);
-      }
+    if (!user) return;
+    if (user.displayName) setProfileDisplayName(user.displayName);
+    // Prefer the avatar stored on this device. The upload and preset flows
+    // write to localStorage immediately, while Firebase only receives the photo
+    // when the user taps "Update Profile". Trusting user.photoURL first would
+    // revert a freshly uploaded picture back to the old one (or the default
+    // placeholder) on every refresh.
+    const cached = localStorage.getItem('marketos_user_avatar');
+    if (cached) {
+      setAvatarUrl(cached);
+    } else if (user.photoURL) {
+      setAvatarUrl(user.photoURL);
+      localStorage.setItem('marketos_user_avatar', user.photoURL);
     }
   }, [user]);
 
@@ -1169,19 +1320,67 @@ function App() {
             />
           </div>
 
+          {forgotMode ? (
+            <form onSubmit={handleForgotPassword} className="w-full flex flex-col gap-4">
+              <p className="text-xs text-muted-foreground leading-relaxed -mt-1">
+                Enter the email address linked to your account and we&apos;ll send you a secure link to reset your password.
+              </p>
+              <div className="flex flex-col">
+                <label className="text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">{T('auth.email')}</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); setFieldErrors((p) => ({ ...p, email: '' })); }}
+                  placeholder="name@example.com"
+                  className="bg-surface border border-border/60 text-foreground px-4 py-3 rounded-xl focus:outline-none focus:border-[#F5C518] focus:ring-1 focus:ring-[#F5C518]/30 font-semibold text-sm transition-all"
+                  required
+                />
+                {fieldErrors.email && <span className="text-[11px] text-rose-400 font-semibold mt-1.5">{fieldErrors.email}</span>}
+              </div>
+
+              {authNotice && (
+                <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-3 rounded-xl text-xs font-semibold leading-relaxed">
+                  {authNotice}
+                </div>
+              )}
+
+              {authError && (
+                <div className="bg-rose-500/10 border border-rose-500/30 text-rose-400 p-3 rounded-xl text-xs font-semibold">
+                  {authError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={authBusy}
+                className="pill-button w-full bg-[#F5C518] hover:bg-[#EAB308] disabled:opacity-60 text-black font-extrabold py-3.5 rounded-full transition-all shadow-xl shadow-amber-500/20 text-sm active:scale-[0.99]"
+              >
+                {authBusy ? 'Sending...' : T('auth.sendResetLink')}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setForgotMode(false); setAuthError(''); setAuthNotice(''); setFieldErrors({}); }}
+                className="text-xs text-muted-foreground hover:text-foreground font-bold py-1"
+              >
+                {T('auth.backToSignIn')}
+              </button>
+            </form>
+          ) : (
           <form onSubmit={handleAuth} className="w-full flex flex-col gap-4">
             
             {isSignUp && (
               <div className="flex flex-col">
-                <label className="text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">{T('auth.username')}</label>
+                <label className="text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">{T('auth.fullName')}</label>
                 <input 
                   type="text" 
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Your Name or Business"
+                  onChange={(e) => { setUsername(e.target.value); setFieldErrors((p) => ({ ...p, fullName: '' })); }}
+                  placeholder="e.g. Ada Okafor"
                   className="bg-surface border border-border/60 text-foreground px-4 py-3 rounded-xl focus:outline-none focus:border-[#F5C518] focus:ring-1 focus:ring-[#F5C518]/30 font-semibold text-sm transition-all"
                   required
                 />
+                {fieldErrors.fullName && <span className="text-[11px] text-rose-400 font-semibold mt-1.5">{fieldErrors.fullName}</span>}
               </div>
             )}
 
@@ -1190,11 +1389,12 @@ function App() {
               <input 
                 type="email" 
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); setFieldErrors((p) => ({ ...p, email: '' })); }}
                 placeholder="name@example.com"
                 className="bg-surface border border-border/60 text-foreground px-4 py-3 rounded-xl focus:outline-none focus:border-[#F5C518] focus:ring-1 focus:ring-[#F5C518]/30 font-semibold text-sm transition-all"
                 required
               />
+              {fieldErrors.email && <span className="text-[11px] text-rose-400 font-semibold mt-1.5">{fieldErrors.email}</span>}
             </div>
 
             <div className="flex flex-col">
@@ -1202,11 +1402,12 @@ function App() {
               <input 
                 type="password" 
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => { setPassword(e.target.value); setFieldErrors((p) => ({ ...p, password: '' })); }}
                 placeholder="••••••••"
                 className="bg-surface border border-border/60 text-foreground px-4 py-3 rounded-xl focus:outline-none focus:border-[#F5C518] focus:ring-1 focus:ring-[#F5C518]/30 font-semibold text-sm transition-all"
                 required
               />
+              {fieldErrors.password && <span className="text-[11px] text-rose-400 font-semibold mt-1.5">{fieldErrors.password}</span>}
             </div>
 
             {isSignUp && (
@@ -1215,12 +1416,23 @@ function App() {
                 <input 
                   type="password" 
                   value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onChange={(e) => { setConfirmPassword(e.target.value); setFieldErrors((p) => ({ ...p, confirmPassword: '' })); }}
                   placeholder="••••••••"
                   className="bg-surface border border-border/60 text-foreground px-4 py-3 rounded-xl focus:outline-none focus:border-[#F5C518] focus:ring-1 focus:ring-[#F5C518]/30 font-semibold text-sm transition-all"
                   required
                 />
+                {fieldErrors.confirmPassword && <span className="text-[11px] text-rose-400 font-semibold mt-1.5">{fieldErrors.confirmPassword}</span>}
               </div>
+            )}
+
+            {!isSignUp && (
+              <button
+                type="button"
+                onClick={() => { setForgotMode(true); setAuthError(''); setAuthNotice(''); setFieldErrors({}); }}
+                className="self-end text-xs font-bold text-amber-400 hover:text-amber-300 -mt-1"
+              >
+                {T('auth.forgotPassword')}
+              </button>
             )}
 
             {isSignUp && (
@@ -1255,6 +1467,12 @@ function App() {
               </div>
             )}
 
+            {authNotice && (
+              <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-3 rounded-xl text-xs font-semibold leading-relaxed">
+                {authNotice}
+              </div>
+            )}
+
             {authError && (
               <div className="bg-rose-500/10 border border-rose-500/30 text-rose-400 p-3 rounded-xl text-xs font-semibold">
                 {authError}
@@ -1263,9 +1481,10 @@ function App() {
 
             <button 
               type="submit" 
-              className="pill-button w-full bg-[#F5C518] hover:bg-[#EAB308] text-black font-extrabold py-3.5 rounded-full mt-2 transition-all shadow-xl shadow-amber-500/20 text-sm active:scale-[0.99]"
+              disabled={authBusy}
+              className="pill-button w-full bg-[#F5C518] hover:bg-[#EAB308] disabled:opacity-60 text-black font-extrabold py-3.5 rounded-full mt-2 transition-all shadow-xl shadow-amber-500/20 text-sm active:scale-[0.99]"
             >
-              {isSignUp ? 'Create Account' : 'Sign In'}
+              {authBusy ? (isSignUp ? 'Creating account...' : 'Signing in...') : (isSignUp ? 'Create Account' : 'Sign In')}
             </button>
 
             <div className="relative flex items-center justify-center my-2">
@@ -1287,6 +1506,7 @@ function App() {
               Continue with Google
             </button>
           </form>
+          )}
 
           {/* On-page Single-Page Legal Footer Navigation */}
           <div className="mt-6 pt-4 border-t border-border/40 w-full text-center flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
@@ -2081,20 +2301,22 @@ function App() {
         </div>
 
         {activeTab === 'insights' && (
-          <div className="px-3 sm:px-5 xl:px-8 py-2 flex flex-col gap-6 max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-3 duration-300">
-            {/* One Simple Market Report */}
-            <MarketReport 
-              sales={sales} 
-              expenses={expenses} 
-              products={products}
-              timePeriod={insightTimePeriod}
-              setTimePeriod={setInsightTimePeriod}
-              customStart={insightCustomStart}
-              setCustomStart={setInsightCustomStart}
-              customEnd={insightCustomEnd}
-              setCustomEnd={setInsightCustomEnd}
-            />
-          </div>
+          <InsightPaywall user={user} isFounder={isFounder}>
+            <div className="px-3 sm:px-5 xl:px-8 py-2 flex flex-col gap-6 max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-3 duration-300">
+              {/* One Simple Market Report */}
+              <MarketReport 
+                sales={sales} 
+                expenses={expenses} 
+                products={products}
+                timePeriod={insightTimePeriod}
+                setTimePeriod={setInsightTimePeriod}
+                customStart={insightCustomStart}
+                setCustomStart={setInsightCustomStart}
+                customEnd={insightCustomEnd}
+                setCustomEnd={setInsightCustomEnd}
+              />
+            </div>
+          </InsightPaywall>
         )}
 
         {activeTab === 'settings' && (
@@ -2192,7 +2414,10 @@ function App() {
                       <button
                         key={preset.id}
                         type="button"
-                        onClick={() => setAvatarUrl(preset.url)}
+                        onClick={() => {
+                          setAvatarUrl(preset.url);
+                          localStorage.setItem('marketos_user_avatar', preset.url);
+                        }}
                         className={`relative w-12 h-12 rounded-full overflow-hidden transition-all shrink-0 border-2 ${
                           isSelected 
                             ? 'border-[#F5C518] scale-105 shadow-md shadow-amber-500/25 ring-2 ring-amber-400/30' 

@@ -16,7 +16,12 @@ import {
   ChevronRight,
   Mail,
   UserCheck,
-  Trash2
+  Trash2,
+  CreditCard,
+  Save,
+  Lock,
+  TrendingUp,
+  BadgeCheck
 } from 'lucide-react';
 import { ADMIN_EMAIL, API_ENDPOINTS } from '../config/api';
 
@@ -64,6 +69,48 @@ interface Complaint {
   createdAt: string;
 }
 
+interface PaywallPayment {
+  reference: string;
+  userId?: string;
+  email?: string;
+  amountKobo: number;
+  currency: string;
+  status: string;
+  channel?: string;
+  paidAt?: string;
+  createdAt: string;
+}
+
+interface PaywallAccess {
+  userId: string;
+  email?: string;
+  reference?: string;
+  amountKobo: number;
+  paidAt?: string;
+  expiresAt: string;
+}
+
+interface PaywallOverview {
+  settings: {
+    enabled: boolean;
+    amountKobo: number;
+    amount: number;
+    durationDays: number;
+    currency: string;
+    updatedAt?: string;
+  };
+  configured: boolean;
+  stats: {
+    totalPayments: number;
+    successfulPayments: number;
+    activeSubscribers: number;
+    revenueKobo: number;
+    revenue: number;
+  };
+  payments: PaywallPayment[];
+  access: PaywallAccess[];
+}
+
 interface AdminViewProps {
   currentUserEmail?: string;
   onBackToApp: () => void;
@@ -80,8 +127,70 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUserEmail, onBackTo
   const [logFilter, setLogFilter] = useState<'all' | 'errors' | '200' | '401' | '500'>('all');
   const [searchLogQuery, setSearchLogQuery] = useState('');
   const [searchUserQuery, setSearchUserQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'logs' | 'complaints'>('dashboard');
+  const [showPaidOnly, setShowPaidOnly] = useState(false);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'logs' | 'complaints' | 'paywall'>('dashboard');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // Paywall / Paystack configuration state
+  const [paywall, setPaywall] = useState<PaywallOverview | null>(null);
+  const [paywallForm, setPaywallForm] = useState<{ enabled: boolean; amount: string; durationDays: string }>({
+    enabled: true,
+    amount: '',
+    durationDays: '30'
+  });
+  const [paywallSaving, setPaywallSaving] = useState(false);
+  const [paywallMessage, setPaywallMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null);
+
+  const fetchPaywall = useCallback(async () => {
+    if (!isFounder) return;
+    try {
+      const res = await fetch(API_ENDPOINTS.adminPaywall);
+      if (res.ok) {
+        const data: PaywallOverview = await res.json();
+        setPaywall(data);
+        setPaywallForm({
+          enabled: data.settings.enabled,
+          amount: String(data.settings.amount ?? ''),
+          durationDays: String(data.settings.durationDays ?? 30)
+        });
+      }
+    } catch (e) {
+      console.error('Error fetching paywall data:', e);
+    }
+  }, [isFounder]);
+
+  const savePaywall = async () => {
+    setPaywallSaving(true);
+    setPaywallMessage(null);
+    try {
+      const amountNum = Number(paywallForm.amount);
+      const daysNum = Number(paywallForm.durationDays);
+      if (!Number.isFinite(amountNum) || amountNum < 0) {
+        throw new Error('Enter a valid price (₦).');
+      }
+      if (!Number.isFinite(daysNum) || daysNum < 1) {
+        throw new Error('Enter a valid duration in days.');
+      }
+      const res = await fetch(API_ENDPOINTS.adminPaywall, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: paywallForm.enabled,
+          amount: amountNum,
+          durationDays: Math.round(daysNum)
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Failed to save paywall settings.');
+      setPaywallMessage({ type: 'ok', text: 'Paywall settings saved.' });
+      await fetchPaywall();
+    } catch (e: any) {
+      setPaywallMessage({ type: 'error', text: e?.message || 'Failed to save paywall settings.' });
+    } finally {
+      setPaywallSaving(false);
+      setTimeout(() => setPaywallMessage(null), 4000);
+    }
+  };
 
   const fetchAdminData = useCallback(async () => {
     if (!isFounder) return;
@@ -122,6 +231,10 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUserEmail, onBackTo
 
     return () => clearInterval(interval);
   }, [fetchAdminData, autoRefresh, isFounder]);
+
+  useEffect(() => {
+    fetchPaywall();
+  }, [fetchPaywall]);
 
   const handleResolveComplaint = async (complaintId: string) => {
     try {
@@ -228,6 +341,14 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUserEmail, onBackTo
       (u.phone && u.phone.includes(q))
     );
   });
+
+  // Users with an active paid Insight subscription, keyed by their user id, so
+  // the admin can spot who has paid at a glance.
+  const paidAccessByUser = new Map((paywall?.access || []).map((a) => [a.userId, a]));
+  const paidUserCount = (stats?.userList || []).filter((u) => paidAccessByUser.has(u.userId)).length;
+  const visibleUsers = showPaidOnly
+    ? filteredUsers.filter((u) => paidAccessByUser.has(u.userId))
+    : filteredUsers;
 
   const recentErrors = logs.filter((l) => l.status >= 400).slice(0, 5);
 
@@ -373,6 +494,40 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUserEmail, onBackTo
           </div>
           <div className="text-xs text-slate-500 mt-1">Requiring founder phone callback</div>
         </div>
+
+        {/* Paystack Revenue */}
+        <div 
+          onClick={() => setActiveTab('paywall')}
+          className="bg-[#0E1118] border border-slate-800 hover:border-emerald-500/40 rounded-2xl p-4 sm:p-5 shadow-sm cursor-pointer transition-all group"
+        >
+          <div className="flex items-center justify-between text-slate-400 mb-2">
+            <span className="text-xs font-semibold">Insight Revenue</span>
+            <TrendingUp size={18} className="text-emerald-400 group-hover:scale-110 transition-transform" />
+          </div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-emerald-400">
+            ₦{(paywall?.stats.revenue || 0).toLocaleString()}
+          </div>
+          <div className="text-xs text-slate-500 mt-1">
+            {paywall?.stats.successfulPayments || 0} successful payments
+          </div>
+        </div>
+
+        {/* Active Subscribers */}
+        <div 
+          onClick={() => setActiveTab('paywall')}
+          className="bg-[#0E1118] border border-slate-800 hover:border-amber-500/40 rounded-2xl p-4 sm:p-5 shadow-sm cursor-pointer transition-all group"
+        >
+          <div className="flex items-center justify-between text-slate-400 mb-2">
+            <span className="text-xs font-semibold">Active Subscribers</span>
+            <CreditCard size={18} className="text-amber-400 group-hover:scale-110 transition-transform" />
+          </div>
+          <div className="text-2xl sm:text-3xl font-extrabold text-amber-400">
+            {paywall?.stats.activeSubscribers ?? 0}
+          </div>
+          <div className="text-xs text-slate-500 mt-1">
+            {paywall ? (paywall.settings.enabled ? 'Paywall enabled' : 'Paywall disabled') : 'Loading…'}
+          </div>
+        </div>
       </div>
 
       {/* Navigation Tabs - Modern Sleek Pill Navigation */}
@@ -426,6 +581,21 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUserEmail, onBackTo
             <span className="text-[10px] px-2 py-0.5 rounded-lg bg-purple-500 text-white font-black">
               {complaints.filter((c) => c.status === 'pending').length}
             </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('paywall')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+            activeTab === 'paywall'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 bg-slate-900/60 border border-slate-800'
+          }`}
+        >
+          <CreditCard size={14} />
+          <span>Payments & Paywall</span>
+          {paywall && !paywall.settings.enabled && (
+            <span className="text-[10px] px-2 py-0.5 rounded-lg bg-red-500 text-white font-black">OFF</span>
           )}
         </button>
       </div>
@@ -597,7 +767,15 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUserEmail, onBackTo
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="font-bold text-slate-100 text-sm break-words">{u.name}</div>
-                      <div className="text-xs text-slate-400 break-words">{u.email}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-slate-400 break-words">{u.email}</span>
+                        {paidAccessByUser.has(u.userId) && (
+                          <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                            <BadgeCheck size={10} />
+                            PAID
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -635,26 +813,45 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUserEmail, onBackTo
                 Full names of signed up users, emails, active phones, inventory count, and revenue volumes.
               </p>
             </div>
-            <div className="text-xs text-slate-300 font-semibold px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 self-start sm:self-auto">
-              Total Accounts: <span className="text-amber-400">{filteredUsers.length}</span>
+            <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+              <div className="text-xs text-slate-300 font-semibold px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800">
+                Total Accounts: <span className="text-amber-400">{filteredUsers.length}</span>
+              </div>
+              <div className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                <BadgeCheck size={13} />
+                Paid: <span>{paidUserCount}</span>
+              </div>
             </div>
           </div>
 
-          {/* Search box for users */}
-          <div className="relative">
-            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
-            <input
-              type="text"
-              value={searchUserQuery}
-              onChange={(e) => setSearchUserQuery(e.target.value)}
-              placeholder="Search by merchant name, email, phone number, or UID..."
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400 transition-colors"
-            />
+          {/* Search + Paid filter */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
+            <div className="relative flex-1">
+              <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                type="text"
+                value={searchUserQuery}
+                onChange={(e) => setSearchUserQuery(e.target.value)}
+                placeholder="Search by merchant name, email, phone number, or UID..."
+                className="w-full pl-10 pr-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400 transition-colors"
+              />
+            </div>
+            <button
+              onClick={() => setShowPaidOnly((v) => !v)}
+              className={`px-3.5 py-2.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-1.5 shrink-0 ${
+                showPaidOnly
+                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <BadgeCheck size={14} />
+              {showPaidOnly ? 'Showing Paid Users' : 'Paid Users Only'}
+            </button>
           </div>
 
           {/* Users List / Cards */}
           <div className="space-y-3.5">
-            {filteredUsers.map((u, i) => (
+            {visibleUsers.map((u, i) => (
               <div
                 key={i}
                 className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-slate-700 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
@@ -672,6 +869,19 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUserEmail, onBackTo
                       <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                         Active Account
                       </span>
+                      {paidAccessByUser.has(u.userId) && (
+                        <span
+                          className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1"
+                          title={
+                            paidAccessByUser.get(u.userId)?.expiresAt
+                              ? `Paid · access expires ${new Date(paidAccessByUser.get(u.userId)!.expiresAt).toLocaleDateString()}`
+                              : 'Paid subscriber'
+                          }
+                        >
+                          <BadgeCheck size={11} />
+                          PAID
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
@@ -741,9 +951,11 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUserEmail, onBackTo
               </div>
             ))}
 
-            {filteredUsers.length === 0 && (
+            {visibleUsers.length === 0 && (
               <div className="text-center py-12 text-slate-500 text-xs">
-                No users found matching "{searchUserQuery}".
+                {showPaidOnly
+                  ? 'No paid users yet.'
+                  : `No users found matching "${searchUserQuery}".`}
               </div>
             )}
           </div>
@@ -981,6 +1193,188 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUserEmail, onBackTo
                 No user complaints registered yet. Incoming merchant tickets will appear here with phone numbers for rapid resolution.
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 5: PAYMENTS & PAYWALL (Paystack) */}
+      {activeTab === 'paywall' && (
+        <div className="space-y-6">
+          {/* Configuration Card */}
+          <div className="bg-[#0E1118] border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                  <Lock size={18} className="text-amber-400" />
+                  <span>Insight Paywall Configuration</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Set the price and duration merchants pay to unlock the Insights page. Switch test/live by
+                  changing only <code className="text-amber-300 font-mono">PAYSTACK_SECRET_KEY</code> on the server.
+                </p>
+              </div>
+              <span
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold border self-start sm:self-auto ${
+                  paywall?.configured
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                    : 'bg-red-500/10 text-red-400 border-red-500/30'
+                }`}
+              >
+                {paywall?.configured ? 'Paystack Connected' : 'Paystack Not Configured'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Enable/Disable toggle */}
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
+                <div className="text-[11px] uppercase font-bold text-slate-500">Paywall Status</div>
+                <button
+                  onClick={() => setPaywallForm((f) => ({ ...f, enabled: !f.enabled }))}
+                  className={`w-full py-2.5 rounded-xl text-xs font-bold border transition-colors flex items-center justify-center gap-2 ${
+                    paywallForm.enabled
+                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                      : 'bg-slate-800 text-slate-400 border-slate-700'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${paywallForm.enabled ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                  {paywallForm.enabled ? 'Enabled (Users Must Pay)' : 'Disabled (Free Access)'}
+                </button>
+              </div>
+
+              {/* Amount */}
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
+                <label className="text-[11px] uppercase font-bold text-slate-500">Price (₦ Naira)</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={paywallForm.amount}
+                  onChange={(e) => setPaywallForm((f) => ({ ...f, amount: e.target.value }))}
+                  placeholder="e.g. 5000"
+                  className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              {/* Duration */}
+              <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
+                <label className="text-[11px] uppercase font-bold text-slate-500">Duration (days)</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={paywallForm.durationDays}
+                  onChange={(e) => setPaywallForm((f) => ({ ...f, durationDays: e.target.value }))}
+                  placeholder="e.g. 30"
+                  className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={savePaywall}
+                disabled={paywallSaving}
+                className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs transition-colors flex items-center gap-2 shadow-md shadow-amber-500/20 disabled:opacity-60"
+              >
+                <Save size={14} />
+                <span>{paywallSaving ? 'Saving…' : 'Save Settings'}</span>
+              </button>
+
+              {paywallMessage && (
+                <span
+                  className={`text-xs font-semibold flex items-center gap-1.5 ${
+                    paywallMessage.type === 'ok' ? 'text-emerald-400' : 'text-red-400'
+                  }`}
+                >
+                  <CheckCircle2 size={14} />
+                  {paywallMessage.text}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Payment KPIs */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+            <div className="bg-[#0E1118] border border-slate-800 rounded-2xl p-4 sm:p-5">
+              <div className="text-xs font-semibold text-slate-400 mb-2">Total Revenue</div>
+              <div className="text-2xl font-extrabold text-emerald-400">₦{(paywall?.stats.revenue || 0).toLocaleString()}</div>
+            </div>
+            <div className="bg-[#0E1118] border border-slate-800 rounded-2xl p-4 sm:p-5">
+              <div className="text-xs font-semibold text-slate-400 mb-2">Successful Payments</div>
+              <div className="text-2xl font-extrabold text-slate-100">{paywall?.stats.successfulPayments ?? 0}</div>
+            </div>
+            <div className="bg-[#0E1118] border border-slate-800 rounded-2xl p-4 sm:p-5">
+              <div className="text-xs font-semibold text-slate-400 mb-2">Active Subscribers</div>
+              <div className="text-2xl font-extrabold text-amber-400">{paywall?.stats.activeSubscribers ?? 0}</div>
+            </div>
+            <div className="bg-[#0E1118] border border-slate-800 rounded-2xl p-4 sm:p-5">
+              <div className="text-xs font-semibold text-slate-400 mb-2">Total Attempts</div>
+              <div className="text-2xl font-extrabold text-slate-300">{paywall?.stats.totalPayments ?? 0}</div>
+            </div>
+          </div>
+
+          {/* Active Subscribers */}
+          <div className="bg-[#0E1118] border border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
+            <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+              <Users size={16} className="text-emerald-400" />
+              <span>Active Subscribers ({paywall?.access.length || 0})</span>
+            </h3>
+            <div className="space-y-2.5">
+              {(paywall?.access || []).map((a) => (
+                <div key={a.userId} className="p-3.5 rounded-xl bg-slate-900/70 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                  <div className="min-w-0">
+                    <div className="font-bold text-slate-100 break-words">{a.email || 'No email'}</div>
+                    <div className="text-[11px] font-mono text-slate-500 break-all">{a.userId}</div>
+                  </div>
+                  <div className="flex items-center gap-3 text-slate-400 shrink-0">
+                    <span className="text-emerald-400 font-bold">₦{((a.amountKobo || 0) / 100).toLocaleString()}</span>
+                    <span className="flex items-center gap-1">
+                      <Clock size={12} />
+                      Expires {new Date(a.expiresAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+              ))}
+              {(paywall?.access.length || 0) === 0 && (
+                <div className="text-center py-8 text-slate-500 text-xs">No active subscribers yet.</div>
+              )}
+            </div>
+          </div>
+
+          {/* Recent Payments */}
+          <div className="bg-[#0E1118] border border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
+            <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+              <CreditCard size={16} className="text-amber-400" />
+              <span>Recent Payment Transactions ({paywall?.payments.length || 0})</span>
+            </h3>
+            <div className="border border-slate-800/80 rounded-2xl overflow-hidden">
+              <div className="max-h-[420px] overflow-y-auto divide-y divide-slate-800/70 font-mono text-xs">
+                {(paywall?.payments || []).map((p) => (
+                  <div key={p.reference} className="p-3.5 hover:bg-slate-900/60 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+                      <span
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold shrink-0 ${
+                          p.status === 'success'
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            : p.status === 'pending'
+                            ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                            : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                        }`}
+                      >
+                        {p.status}
+                      </span>
+                      <span className="text-slate-100 font-medium break-all">{p.reference}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-slate-400 text-[11px] shrink-0">
+                      <span className="text-slate-300 break-all max-w-[160px] truncate">{p.email}</span>
+                      <span className="text-emerald-400 font-bold">₦{((p.amountKobo || 0) / 100).toLocaleString()}</span>
+                      <span className="text-slate-500">{new Date(p.createdAt).toLocaleString()}</span>
+                    </div>
+                  </div>
+                ))}
+                {(paywall?.payments.length || 0) === 0 && (
+                  <div className="p-10 text-center text-slate-500 text-xs">No payment transactions yet.</div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
