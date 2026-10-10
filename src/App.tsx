@@ -169,6 +169,7 @@ function App() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
+  const [mobileNumber, setMobileNumber] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [authError, setAuthError] = useState('');
@@ -264,7 +265,7 @@ function App() {
 
     // 1) Client-side validation
     const result = isSignUp
-      ? validateSignup({ fullName: username, email, password, confirmPassword })
+      ? validateSignup({ fullName: username, email, mobile: mobileNumber, password, confirmPassword })
       : validateSignin({ email, password });
 
     if (!result.valid) {
@@ -284,7 +285,7 @@ function App() {
       const serverError = await validateOnServer(
         isSignUp ? API_ENDPOINTS.authValidateSignup : API_ENDPOINTS.authValidateSignin,
         isSignUp
-          ? { fullName: username.trim(), email: email.trim(), password, confirmPassword }
+          ? { fullName: username.trim(), email: email.trim(), mobile: mobileNumber.trim(), password, confirmPassword }
           : { email: email.trim(), password }
       );
       if (serverError) {
@@ -297,6 +298,18 @@ function App() {
       if (isSignUp) {
         const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
         await updateProfile(cred.user, { displayName: username.trim() });
+        // Persist the signup details (incl. mobile number) to the user profile
+        // so they survive across devices and future sign-ins.
+        fetch(API_ENDPOINTS.profileUpdate, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: cred.user.uid,
+            name: username.trim(),
+            email: email.trim(),
+            mobile: mobileNumber.trim(),
+          }),
+        }).catch(() => {});
         // Email confirmation: the account cannot be used until the user opens
         // the confirmation link we send to their inbox.
         await sendEmailVerification(cred.user);
@@ -306,6 +319,7 @@ function App() {
         setPassword('');
         setConfirmPassword('');
         setUsername('');
+        setMobileNumber('');
         setIsSignUp(false);
       } else {
         const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
@@ -1396,6 +1410,23 @@ function App() {
               />
               {fieldErrors.email && <span className="text-[11px] text-rose-400 font-semibold mt-1.5">{fieldErrors.email}</span>}
             </div>
+
+            {isSignUp && (
+              <div className="flex flex-col">
+                <label className="text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">{T('auth.mobile')}</label>
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  value={mobileNumber}
+                  onChange={(e) => { setMobileNumber(e.target.value); setFieldErrors((p) => ({ ...p, mobile: '' })); }}
+                  placeholder="e.g. 08012345678"
+                  className="bg-surface border border-border/60 text-foreground px-4 py-3 rounded-xl focus:outline-none focus:border-[#F5C518] focus:ring-1 focus:ring-[#F5C518]/30 font-semibold text-sm transition-all"
+                  required
+                />
+                {fieldErrors.mobile && <span className="text-[11px] text-rose-400 font-semibold mt-1.5">{fieldErrors.mobile}</span>}
+              </div>
+            )}
 
             <div className="flex flex-col">
               <label className="text-[11px] font-bold text-muted-foreground mb-1.5 uppercase tracking-wider">{T('auth.password')}</label>
