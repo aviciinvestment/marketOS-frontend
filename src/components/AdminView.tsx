@@ -41,6 +41,7 @@ interface UserInfo {
   userId: string;
   name: string;
   email: string;
+  mobile?: string;
   phone?: string;
   productsCount?: number;
   salesCount?: number;
@@ -130,6 +131,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUserEmail, onBackTo
   const [showPaidOnly, setShowPaidOnly] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'logs' | 'complaints' | 'paywall'>('dashboard');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
   // Paywall / Paystack configuration state
   const [paywall, setPaywall] = useState<PaywallOverview | null>(null);
@@ -259,6 +261,35 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUserEmail, onBackTo
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const handleDeleteUser = async (userId: string, name: string) => {
+    if (
+      !window.confirm(
+        `Delete ${name}? This permanently removes their account, store data, complaints and access. This cannot be undone.`
+      )
+    ) {
+      return;
+    }
+    setDeletingUserId(userId);
+    try {
+      const res = await fetch(API_ENDPOINTS.adminDeleteUser(userId), { method: 'DELETE' });
+      if (!res.ok) throw new Error('request failed');
+      setStats((prev) =>
+        prev
+          ? {
+              ...prev,
+              userList: prev.userList.filter((u) => u.userId !== userId),
+              totalUsers: Math.max(0, (prev.totalUsers || 1) - 1),
+            }
+          : prev
+      );
+    } catch (err) {
+      console.error('Failed to delete user:', err);
+      window.alert('Could not delete this user. Please try again.');
+    } finally {
+      setDeletingUserId(null);
+    }
+  };
+
   const [isClearingLogs, setIsClearingLogs] = useState(false);
   const [clearSuccessMessage, setClearSuccessMessage] = useState<string | null>(null);
 
@@ -338,6 +369,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUserEmail, onBackTo
       u.name.toLowerCase().includes(q) ||
       u.email.toLowerCase().includes(q) ||
       u.userId.toLowerCase().includes(q) ||
+      (u.mobile && u.mobile.includes(q)) ||
       (u.phone && u.phone.includes(q))
     );
   });
@@ -884,23 +916,54 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUserEmail, onBackTo
                       )}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
+                    <div className="flex flex-col gap-1.5 text-xs text-slate-400">
                       <span className="flex items-center gap-1.5">
                         <Mail size={12} className="text-slate-500" />
                         <span className="text-slate-300 font-medium">{u.email}</span>
                       </span>
 
-                      {u.phone ? (
-                        <a
-                          href={`tel:${u.phone}`}
-                          className="flex items-center gap-1.5 text-emerald-400 hover:underline font-medium"
-                        >
-                          <Phone size={12} />
-                          <span>{u.phone}</span>
-                        </a>
+                      {/* Profile mobile number with direct call button */}
+                      {u.mobile ? (
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <Phone size={12} className="text-emerald-400" />
+                          <span className="text-slate-300 font-medium">{u.mobile}</span>
+                          <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                            Profile
+                          </span>
+                          <a
+                            href={`tel:${u.mobile}`}
+                            className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 transition-colors"
+                            title="Call profile mobile"
+                          >
+                            <Phone size={10} />
+                            <span>Call</span>
+                          </a>
+                        </span>
                       ) : (
-                        <span className="text-slate-500">No phone filed</span>
+                        <span className="flex items-center gap-1.5 text-slate-500">
+                          <Phone size={12} />
+                          <span>No profile mobile</span>
+                        </span>
                       )}
+
+                      {/* Complaint phone number with direct call button */}
+                      {u.phone ? (
+                        <span className="flex flex-wrap items-center gap-1.5">
+                          <Phone size={12} className="text-purple-400" />
+                          <span className="text-slate-300 font-medium">{u.phone}</span>
+                          <span className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
+                            Complaint
+                          </span>
+                          <a
+                            href={`tel:${u.phone}`}
+                            className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1 transition-colors"
+                            title="Call complaint number"
+                          >
+                            <Phone size={10} />
+                            <span>Call</span>
+                          </a>
+                        </span>
+                      ) : null}
                     </div>
 
                     <div className="text-[11px] font-mono text-slate-500">
@@ -945,6 +1008,20 @@ export const AdminView: React.FC<AdminViewProps> = ({ currentUserEmail, onBackTo
                       <CheckCircle size={15} className="text-emerald-400" />
                     ) : (
                       <Copy size={15} />
+                    )}
+                  </button>
+
+                  {/* Delete User Button */}
+                  <button
+                    onClick={() => handleDeleteUser(u.userId, u.name)}
+                    disabled={deletingUserId === u.userId}
+                    className="p-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl border border-red-500/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Delete this user and all their data"
+                  >
+                    {deletingUserId === u.userId ? (
+                      <RefreshCw size={15} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={15} />
                     )}
                   </button>
                 </div>

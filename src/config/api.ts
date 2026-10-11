@@ -34,6 +34,7 @@ export const API_ENDPOINTS = {
   get adminStats() { return `${getApiBaseUrl()}/api/admin/stats`; },
   get adminLogs() { return `${getApiBaseUrl()}/api/admin/logs`; },
   get adminComplaints() { return `${getApiBaseUrl()}/api/admin/complaints`; },
+  adminDeleteUser(userId: string) { return `${getApiBaseUrl()}/api/admin/users/${encodeURIComponent(userId)}`; },
   get supportComplaint() { return `${getApiBaseUrl()}/api/support/complaint`; },
   get uploadAvatar() { return `${getApiBaseUrl()}/api/profile/upload-avatar`; },
   get profileUpdate() { return `${getApiBaseUrl()}/api/profile/update`; },
